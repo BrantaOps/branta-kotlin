@@ -37,8 +37,8 @@ If you are an AI agent implementing this SDK, follow the steps below exactly. If
 If they are on the receive side, ask one follow-up:
 - **Platform** — single-tenant, one API key.
 - **Parent Platform** — multi-tenant, manages multiple child platforms. Two variants:
-  - **Per-client keys** — each child has its own API key and HMAC secret; scope requests per-call.
-  - **Shared key** — one API key and HMAC secret for all children; tag the child per-payment with `setChildPlatform()`.
+  - **Shared key (Recommended)** — one API key for all children, no HMAC secret needed; tag the child per-payment with `setChildPlatform()`. Default to this unless there's a specific reason for separate per-child keys.
+  - **Per-client keys** — each child has its own API key, and the parent signs every request with an HMAC secret to prove it originated from the parent; scope requests per-call. Use only if each child needs an independent, separately-revocable API key.
 
 **2. Follow the matching Quick Start section below.**
 
@@ -155,7 +155,7 @@ val result = service.addPayment(payment)
 
 ## For Parent Platforms
 
-Parent platforms sign requests with HMAC. Choose a variant based on key structure.
+Choose a variant based on key structure. Only the per-client keys variant signs requests with HMAC — shared key needs none.
 
 <details>
 <summary>Shared key — one API key covers all children (Recommended)</summary>
@@ -165,7 +165,6 @@ val service = BrantaService(
     BrantaClientOptions(
         baseUrl = BrantaServerBaseUrl.Production,
         defaultApiKey = "<shared-api-key>",
-        hmacSecret = "<hmac-secret>",
         privacy = PrivacyMode.Strict
     )
 )
