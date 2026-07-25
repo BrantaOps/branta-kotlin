@@ -1,3 +1,5 @@
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     kotlin("jvm") version "2.0.21"
     kotlin("plugin.serialization") version "2.0.21"
@@ -34,7 +36,7 @@ tasks.test {
 }
 
 mavenPublishing {
-    publishToMavenCentral()
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
     coordinates("pro.branta", "branta", version.toString())
