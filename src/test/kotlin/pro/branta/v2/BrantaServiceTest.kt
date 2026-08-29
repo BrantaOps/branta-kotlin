@@ -10,6 +10,7 @@ import pro.branta.enums.BrantaServerBaseUrl
 import pro.branta.enums.DestinationType
 import pro.branta.enums.PrivacyMode
 import pro.branta.exceptions.BrantaPaymentException
+import pro.branta.exceptions.BrantaPaymentExceptionReason
 import pro.branta.v2.interfaces.IAesEncryption
 import pro.branta.v2.interfaces.IBrantaClient
 import pro.branta.v2.interfaces.ISecretGenerator
@@ -184,6 +185,83 @@ class BrantaServiceTest {
         assertEquals(DECRYPTED_BOLT11, result.payments[0].destinations[1].value)
         verify { aesMock.decrypt(ENCRYPTED_BITCOIN_ADDRESS, SECRET) }
         verify { aesMock.decrypt(ENCRYPTED_BOLT11, bolt11Hash) }
+    }
+
+    // endregion
+
+    // region getPaymentsByQrCode address binding
+
+    private val swappedAddress = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
+    private val bech32Address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+    private val encryptedBech32Address = "encrypted-bech32-address"
+
+    private fun zkBech32Payment() = PaymentBuilder()
+        .addDestination(encryptedBech32Address, DestinationType.BitcoinAddress).setZk().build()
+
+    @Test
+    fun `getPaymentsByQrCode swapped address rejects`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$swappedAddress?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
+
+        assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode matching address does not throw`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertEquals(BITCOIN_ADDRESS, result.payments[0].destinations[0].value)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode uppercase bech32 QR matches lowercase registered address`() = runTest {
+        every { aesMock.decrypt(encryptedBech32Address, SECRET) } returns bech32Address
+        coEvery { clientMock.getPayments(encryptedBech32Address, any()) } returns listOf(zkBech32Payment())
+
+        val qrText = "bitcoin:${bech32Address.uppercase()}?branta_id=$encryptedBech32Address&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertEquals(bech32Address, result.payments[0].destinations[0].value)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode base58 case mismatch rejects`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:${BITCOIN_ADDRESS.lowercase()}?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
+
+        assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode lightning QR with ZK params and no plain address decrypts without comparison`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "lightning:$BOLT11_INVOICE?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertEquals(BITCOIN_ADDRESS, result.payments[0].destinations[0].value)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode combined ZK QR with swapped address rejects`() = runTest {
+        val payment = PaymentBuilder()
+            .addDestination(ENCRYPTED_BITCOIN_ADDRESS, DestinationType.BitcoinAddress).setZk()
+            .addDestination(ENCRYPTED_BOLT11, DestinationType.Bolt11).setZk()
+            .addDestination(ENCRYPTED_ARK_ADDRESS, DestinationType.ArkAddress).setZk()
+            .build()
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(payment)
+
+        val qrText = "bitcoin:$swappedAddress?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET&lightning=$BOLT11_INVOICE&ark=$ARK_ADDRESS"
+        val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
+
+        assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
     }
 
     // endregion

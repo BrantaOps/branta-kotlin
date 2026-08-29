@@ -9,7 +9,7 @@ Kotlin SDK for the Branta V2 API — payment destination lookup and registration
 
 # Installation
 
-Add to your `build.gradle.kts`:
+Add to your `build.gradle.kts` (check [Maven Central](https://central.sonatype.com/artifact/pro.branta/branta) for the latest version):
 
 ```kotlin
 dependencies {
@@ -47,17 +47,27 @@ If they are on the receive side, ask one follow-up:
 General (all types):
 - Always use `PrivacyMode.Strict`. Never switch to `Loose` unless there is no QR scanner and ZK is impossible.
 - Never call `BrantaClient` directly — always go through `IBrantaService`.
+- For `baseUrl`: use `BrantaServerBaseUrl.Production` only in production environments. Use `BrantaServerBaseUrl.Staging` everywhere else — including local development, CI, and staging/test environments.
 
 Send side (wallets):
 - Prefer `getPaymentsByQrCode` over `getPayments` — it handles multi-value ZK QR payloads correctly.
 - Only fall back to `getPayments` for copy/paste flows where there is no QR code.
 - If `payments` is empty or an exception is thrown, render nothing. Never show an error or "not verified" message.
-- When `result.payments` is non-empty, display: the platform logo, the payment description, and `result.verifyUrl`.
+- When `result.payments` is non-empty, display: the platform logo, the platform name (`payment.platform`), and the payment description (`payment.description`). Only render description when non-empty. Make the verification card a clickable link to `result.verifyUrl` — do not display the raw URL.
 - For the platform logo, use `payment.platformLogoUrl` on dark backgrounds and `payment.platformLogoLightUrl` on light backgrounds.
+- Optionally display `payment.parentPlatform?.logoUrl` / `payment.parentPlatform?.logoLightUrl` as a small secondary badge (e.g. corner icon). This is not required.
 
 Receive side (platforms):
 - Always call `.setZk()` on the `PaymentBuilder` before calling `addPayment`. Plain-text destinations are rejected in `Strict` mode.
 - Store the `secret` returned by `addPayment` alongside the invoice — it is required to reconstruct the verify URL.
+
+Receive side (parent platforms — per-client keys), in addition to the platform rules:
+- Include `hmacSecret` in `BrantaClientOptions` but omit `defaultApiKey` at service construction.
+- Pass per-call `BrantaClientOptions` with each child's API key to scope requests.
+
+Receive side (parent platforms — shared key), in addition to the platform rules:
+- Include `defaultApiKey` in `BrantaClientOptions`. Do not include `hmacSecret`.
+- Call `.setChildPlatform(name, logoUrl, logoLightUrl)` on the builder to tag each payment with the child's branding.
 
 # Quick Start
 
