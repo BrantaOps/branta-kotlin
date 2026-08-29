@@ -1,3 +1,7 @@
 package pro.branta.exceptions
 
-class BrantaPaymentException(message: String) : Exception(message)
+enum class BrantaPaymentExceptionReason {
+    Tampered
+}
+
+class BrantaPaymentException(message: String, val reason: BrantaPaymentExceptionReason? = null) : Exception(message)

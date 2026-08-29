@@ -4,6 +4,7 @@ import pro.branta.BrantaClientOptions
 import pro.branta.enums.DestinationType
 import pro.branta.enums.PrivacyMode
 import pro.branta.exceptions.BrantaPaymentException
+import pro.branta.exceptions.BrantaPaymentExceptionReason
 import pro.branta.v2.interfaces.IAesEncryption
 import pro.branta.v2.interfaces.IBrantaClient
 import pro.branta.v2.interfaces.IBrantaService
@@ -21,6 +22,11 @@ class BrantaService(
     private val secretGenerator: ISecretGenerator = GuidSecretGenerator()
 ) : IBrantaService {
 
+    private fun addressesMatch(a: String, b: String): Boolean {
+        fun isBech32(v: String) = v.startsWith("bc1", ignoreCase = true)
+        return if (isBech32(a) && isBech32(b)) a.equals(b, ignoreCase = true) else a == b
+    }
+
     override suspend fun getPaymentsByQrCode(qrText: String, options: BrantaClientOptions?): PaymentsResult {
         val parser = QrParser(qrText)
 
@@ -28,7 +34,8 @@ class BrantaService(
             val additionalValues = parser.destinations
                 .filter { it.value.getHashZkType() != null }
                 .map { it.value }
-            return getPaymentsForZk(parser.onChainEncryptionText!!, parser.onChainEncryptionSecret, additionalValues, options)
+            val onChainAddress = parser.destinations.firstOrNull { it.type == DestinationType.BitcoinAddress }?.value
+            return getPaymentsForZk(parser.onChainEncryptionText!!, parser.onChainEncryptionSecret, additionalValues, onChainAddress, options)
         }
 
         val destination = parser.destination ?: return PaymentsResult(emptyList(), buildVerifyUrl(options, ""))
@@ -44,13 +51,14 @@ class BrantaService(
         lookupValue: String,
         encryptionKey: String?,
         additionalHashValues: List<String>,
+        expectedOnChainAddress: String?,
         options: BrantaClientOptions?
     ): PaymentsResult {
         val payments = client.getPayments(lookupValue, options)
         val keys = mutableMapOf<String, String>()
 
         for (payment in payments) {
-            decryptDestinations(payment, lookupValue, encryptionKey, null, keys)
+            decryptDestinations(payment, lookupValue, encryptionKey, null, keys, expectedOnChainAddress)
             for (value in additionalHashValues) {
                 decryptHashZkDestinations(payment, value, keys)
             }
@@ -116,7 +124,8 @@ class BrantaService(
         destinationValue: String,
         encryptionKey: String?,
         hashZkType: DestinationType?,
-        keys: MutableMap<String, String>
+        keys: MutableMap<String, String>,
+        expectedOnChainAddress: String? = null
     ) {
         for (destination in payment.destinations) {
             destination.isEncrypted = destination.isZk
@@ -124,14 +133,25 @@ class BrantaService(
 
             if (destination.type == DestinationType.BitcoinAddress) {
                 if (encryptionKey == null) continue
+                val decrypted: String
                 try {
-                    destination.value = aesEncryption.decrypt(destination.value, encryptionKey)
-                    destination.isEncrypted = false
-                    destination.zkId?.let { keys.putIfAbsent(it, encryptionKey) }
-                    tryDecryptMetadata(payment, destination, encryptionKey)
+                    decrypted = aesEncryption.decrypt(destination.value, encryptionKey)
                 } catch (_: Exception) {
                     // Key didn't match — leave encrypted.
+                    continue
                 }
+
+                if (expectedOnChainAddress != null && !addressesMatch(decrypted, expectedOnChainAddress)) {
+                    throw BrantaPaymentException(
+                        "The Bitcoin address in the QR code does not match the address verified by Branta. The QR code may have been tampered with.",
+                        BrantaPaymentExceptionReason.Tampered
+                    )
+                }
+
+                destination.value = decrypted
+                destination.isEncrypted = false
+                destination.zkId?.let { keys.putIfAbsent(it, encryptionKey) }
+                tryDecryptMetadata(payment, destination, encryptionKey)
             } else if (hashZkType != null && destination.type == hashZkType) {
                 val key = destinationValue.toNormalizedHash()
                 try {
