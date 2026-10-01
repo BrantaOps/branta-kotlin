@@ -1,0 +1,20 @@
+name: Kotlin
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+      - name: Test
+        run: ./gradlew test
+        env:
+          BRANTA_SKIP_INTEGRATION: "1"
