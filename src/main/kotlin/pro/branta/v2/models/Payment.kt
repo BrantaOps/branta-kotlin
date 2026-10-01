@@ -17,7 +17,7 @@ data class Payment(
     @SerialName("platform_logo_light_url") val platformLogoLightUrl: String? = null,
     @SerialName("parent_platform") val parentPlatform: Platform? = null,
     @SerialName("child_platform") var childPlatform: Platform? = null,
-    @SerialName("btcpay_server_plugin_version") val btcPayServerPluginVersion: String? = null,
+    @SerialName("btc_pay_server_plugin_version") val btcPayServerPluginVersion: String? = null,
     @Transient var isMetadataDecrypted: Boolean = false
 ) {
     fun getDefaultValue(): String =

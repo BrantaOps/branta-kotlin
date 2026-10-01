@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+- `btcPayServerPluginVersion` now serializes as `btc_pay_server_plugin_version`, the field name the API accepts. The previous name `btcpay_server_plugin_version` was ignored.
+
 ## [3.2.2] - 2026-09-30
 
 ### Fixed
