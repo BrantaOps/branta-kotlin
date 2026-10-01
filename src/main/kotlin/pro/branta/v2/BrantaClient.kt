@@ -100,14 +100,23 @@ class BrantaClient(
 
     private fun verifyLogoUrls(baseUrl: String, payments: List<Payment>) {
         val baseOrigin = java.net.URI(baseUrl).let { "${it.scheme}://${it.host}${if (it.port != -1) ":${it.port}" else ""}" }
-        for (payment in payments) {
-            val logoUrl = payment.platformLogoUrl ?: continue
-            if (logoUrl.isEmpty()) continue
+
+        fun check(logoUrl: String?, fieldName: String) {
+            if (logoUrl.isNullOrEmpty()) return
             val logoUri = java.net.URI(logoUrl)
             val logoOrigin = "${logoUri.scheme}://${logoUri.host}${if (logoUri.port != -1) ":${logoUri.port}" else ""}"
             if (logoOrigin != baseOrigin) {
-                throw BrantaPaymentException("platformLogoUrl domain does not match the configured baseUrl domain")
+                throw BrantaPaymentException("$fieldName domain does not match the configured baseUrl domain")
             }
+        }
+
+        for (payment in payments) {
+            check(payment.platformLogoUrl, "platformLogoUrl")
+            check(payment.platformLogoLightUrl, "platformLogoLightUrl")
+            check(payment.parentPlatform?.logoUrl, "parentPlatform.logoUrl")
+            check(payment.parentPlatform?.logoLightUrl, "parentPlatform.logoLightUrl")
+            check(payment.childPlatform?.logoUrl, "childPlatform.logoUrl")
+            check(payment.childPlatform?.logoLightUrl, "childPlatform.logoLightUrl")
         }
     }
 

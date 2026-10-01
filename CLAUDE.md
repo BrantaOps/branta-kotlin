@@ -38,7 +38,7 @@ Version is in `build.gradle.kts` (`version = "X.Y.Z"`). Update here for releases
 - **ZK modes.** Bitcoin addresses use a random GUID secret (from `ISecretGenerator`). Bolt11, ArkAddress, and SilentPayment use a deterministic key derived from `SHA256(lowercase(value))`.
 - **Metadata encryption.** When `Payment.metadata` is set and at least one ZK destination exists, a DEK is generated, metadata is encrypted with the DEK, and each ZK destination stores its own `encryptedDek = AES(DEK, destinationKey)`.
 - **Decryption failures are silently swallowed.** Wrong key leaves `isEncrypted = true`; failed DEK decryption leaves `metadata` as-is and `isMetadataDecrypted = false`.
-- **Logo URL domain verification.** After every GET, `BrantaClient` verifies that `platformLogoUrl` matches the configured base URL's origin. Mismatch throws `BrantaPaymentException`.
+- **Logo URL domain verification.** After every GET, `BrantaClient` verifies that `platformLogoUrl`, `platformLogoLightUrl`, `parentPlatform.logoUrl`/`logoLightUrl`, and `childPlatform.logoUrl`/`logoLightUrl` each match the configured base URL's origin (skipping null/blank fields); every payment in the list is checked, not just the first. Mismatch throws `BrantaPaymentException` naming the offending field.
 
 ### Conventions
 
