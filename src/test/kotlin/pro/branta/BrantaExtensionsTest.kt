@@ -29,6 +29,12 @@ class BrantaExtensionsTest {
     fun `isArk returns true case insensitive`() = assertTrue("ARK1TESTADDRESS".isArk())
 
     @Test
+    fun `isArk returns true for tark1 prefix`() {
+        assertTrue("tark1testaddress".isArk())
+        assertTrue("TARK1TESTADDRESS".isArk())
+    }
+
+    @Test
     fun `isArk returns false for non-ark`() = assertFalse("bc1qtest".isArk())
 
     @Test
@@ -45,8 +51,10 @@ class BrantaExtensionsTest {
         assertEquals(DestinationType.Bolt11, "lnbc100n1ptest".getHashZkType())
 
     @Test
-    fun `getHashZkType returns ArkAddress for ark address`() =
+    fun `getHashZkType returns ArkAddress for ark address`() {
         assertEquals(DestinationType.ArkAddress, "ark1testaddress".getHashZkType())
+        assertEquals(DestinationType.ArkAddress, "tark1testaddress".getHashZkType())
+    }
 
     @Test
     fun `getHashZkType returns SilentPayment for silent payment`() =

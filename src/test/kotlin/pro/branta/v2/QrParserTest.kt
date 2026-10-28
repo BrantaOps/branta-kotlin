@@ -97,6 +97,12 @@ class QrParserTest {
     }
 
     @Test
+    fun `plain signet ark address detected`() {
+        val parser = QrParser("tark1testaddress")
+        assertEquals(DestinationType.ArkAddress, parser.destinationType)
+    }
+
+    @Test
     fun `plain silent payment detected`() {
         val parser = QrParser("sp1testaddress")
         assertEquals(DestinationType.SilentPayment, parser.destinationType)

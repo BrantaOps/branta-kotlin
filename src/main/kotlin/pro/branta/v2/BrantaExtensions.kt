@@ -11,7 +11,8 @@ fun String.isBolt11(): Boolean =
     startsWith("lntb", ignoreCase = true) ||
     startsWith("lnbcrt", ignoreCase = true)
 
-fun String.isArk(): Boolean = startsWith("ark1", ignoreCase = true)
+fun String.isArk(): Boolean =
+    startsWith("ark1", ignoreCase = true) || startsWith("tark1", ignoreCase = true)
 
 fun String.isSilentPayment(): Boolean =
     startsWith("sp1", ignoreCase = true) ||
