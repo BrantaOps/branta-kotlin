@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- Recognize signet and regtest Ark addresses (`tark1`) as `ark_address`, alongside mainnet `ark1`. Strict-mode hash-ZK lookup and registration treat them the same way as `ark1`.
+
 ### Fixed
 - `btcPayServerPluginVersion` now serializes as `btc_pay_server_plugin_version`, the field name the API accepts. The previous name `btcpay_server_plugin_version` was ignored.
 
