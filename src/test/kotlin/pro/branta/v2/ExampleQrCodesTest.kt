@@ -1,6 +1,7 @@
 package pro.branta.v2
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -15,8 +16,22 @@ import pro.branta.enums.PrivacyMode
  */
 class ExampleQrCodesTest {
 
-    private fun makeService(baseUrl: BrantaServerBaseUrl, privacy: PrivacyMode) =
-        BrantaService(BrantaClientOptions(baseUrl = baseUrl, defaultApiKey = apiKey, privacy = privacy))
+    private fun makeService(baseUrl: BrantaServerBaseUrl, privacy: PrivacyMode): BrantaService {
+        val options = BrantaClientOptions(baseUrl = baseUrl, defaultApiKey = apiKey, privacy = privacy)
+        val token = System.getenv("BRANTA_INTEGRATION_METRICS_TOKEN")
+        val httpClient = if (token.isNullOrEmpty()) {
+            OkHttpClient()
+        } else {
+            OkHttpClient.Builder().addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("X-Branta-Integration-Token", token)
+                        .build()
+                )
+            }.build()
+        }
+        return BrantaService(defaultOptions = options, client = BrantaClient(options, httpClient))
+    }
 
     companion object {
         private val apiKey: String? = System.getenv("BRANTA_API_KEY")
