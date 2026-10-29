@@ -241,7 +241,11 @@ class BrantaServiceTest {
 
     @Test
     fun `getPaymentsByQrCode lightning QR with ZK params and no plain address decrypts without comparison`() = runTest {
-        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+        val payment = PaymentBuilder()
+            .addDestination(ENCRYPTED_BITCOIN_ADDRESS, DestinationType.BitcoinAddress).setZk()
+            .addDestination(ENCRYPTED_BOLT11, DestinationType.Bolt11).setZk()
+            .build()
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(payment)
 
         val qrText = "lightning:$BOLT11_INVOICE?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
         val result = service.getPaymentsByQrCode(qrText)
@@ -262,6 +266,131 @@ class BrantaServiceTest {
         val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
 
         assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
+    }
+
+    private val wrongSecret = "wrong-secret"
+
+    @Test
+    fun `getPaymentsByQrCode swapped address and wrong secret returns no payments`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$swappedAddress?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$wrongSecret"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `getPaymentsByQrCode wrong key on matching QR returns no payments`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$wrongSecret"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `getPaymentsByQrCode attacker lightning leg returns no payments`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET&lightning=lnbc1attacker"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `getPaymentsByQrCode attacker ark leg returns no payments`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET&ark=ark1attacker"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `getPaymentsByQrCode attacker silent payment leg returns no payments`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET&sp=sp1qqattacker"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `getPaymentsByQrCode bip321 bc swap rejects`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:?bc=$swappedAddress&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
+
+        assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode bip321 bc match resolves`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:?bc=$BITCOIN_ADDRESS&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertEquals(1, result.payments.size)
+        assertEquals(BITCOIN_ADDRESS, result.payments[0].destinations[0].value)
+        assertFalse(result.payments[0].destinations[0].isEncrypted)
+    }
+
+    @Test
+    fun `getPaymentsByQrCode path and bc disagree rejects before lookup`() = runTest {
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?bc=$swappedAddress&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val ex = assertFailsWith<BrantaPaymentException> { service.getPaymentsByQrCode(qrText) }
+
+        assertEquals(BrantaPaymentExceptionReason.Tampered, ex.reason)
+        coVerify(exactly = 0) { clientMock.getPayments(any(), any()) }
+    }
+
+    @Test
+    fun `getPaymentsByQrCode pay instruction returns no payments without lookup`() = runTest {
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?pay=bitcoin:$swappedAddress&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+        coVerify(exactly = 0) { clientMock.getPayments(any(), any()) }
+    }
+
+    @Test
+    fun `getPaymentsByQrCode lno instruction returns no payments without lookup`() = runTest {
+        val qrText = "bitcoin:$BITCOIN_ADDRESS?lno=lno1qqattacker&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertTrue(result.payments.isEmpty())
+        coVerify(exactly = 0) { clientMock.getPayments(any(), any()) }
+    }
+
+    @Test
+    fun `getPaymentsByQrCode bolt12 and lnurl instructions return no payments without lookup`() = runTest {
+        val bolt12 = service.getPaymentsByQrCode(
+            "bitcoin:$BITCOIN_ADDRESS?bolt12=lno1qqattacker&branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$SECRET"
+        )
+        val lnurl = service.getPaymentsByQrCode("lightning:LNURL1attacker")
+
+        assertTrue(bolt12.payments.isEmpty())
+        assertTrue(lnurl.payments.isEmpty())
+        coVerify(exactly = 0) { clientMock.getPayments(any(), any()) }
+    }
+
+    @Test
+    fun `getPaymentsByQrCode no payable instruction wrong secret returns encrypted record`() = runTest {
+        coEvery { clientMock.getPayments(ENCRYPTED_BITCOIN_ADDRESS, any()) } returns listOf(zkBitcoinPayment())
+
+        val qrText = "bitcoin:?branta_id=$ENCRYPTED_BITCOIN_ADDRESS&branta_secret=$wrongSecret"
+        val result = service.getPaymentsByQrCode(qrText)
+
+        assertEquals(1, result.payments.size)
+        assertEquals(ENCRYPTED_BITCOIN_ADDRESS, result.payments[0].destinations[0].value)
+        assertTrue(result.payments[0].destinations[0].isEncrypted)
     }
 
     // endregion

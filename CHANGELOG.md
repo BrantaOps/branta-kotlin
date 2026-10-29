@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `getPaymentsByQrCode` now requires every payable instruction in a QR code to match a destination decrypted from the Branta record. Previously a swapped address paired with a rewritten `branta_secret`, an added `lightning`/`ark`/`sp` leg, or a conflicting `bc=`/`tb=` address could still come back as verified. On-chain addresses in the path, `bc=` and `tb=` must now agree (otherwise `BrantaPaymentExceptionReason.Tampered`), and payments are only returned when the on-chain address and every hash-ZK leg decrypt. `bolt12`, `lno=`, `pay=`, and LNURL instructions cannot be verified and return no payments without a lookup (ported from `branta-js` #78)
+
 ## [3.2.3] - 2026-10-28
 
 ### Added

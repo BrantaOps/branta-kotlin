@@ -10,6 +10,10 @@ class QrParser(qrText: String) {
     var onChainEncryptionText: String? = null
     var onChainEncryptionSecret: String? = null
 
+    /** A payable instruction this SDK cannot bind to a decrypted destination. */
+    var hasUnverifiableInstruction: Boolean = false
+        private set
+
     val destination: String? get() = destinations.firstOrNull()?.value
     val destinationType: DestinationType? get() = destinations.firstOrNull()?.type
 
@@ -20,7 +24,11 @@ class QrParser(qrText: String) {
         if (scheme == "bitcoin" || scheme == "lightning") {
             val addr = extractAddress(text)
             if (addr != null) {
-                destinations.add(QrDestination(addr, getDestinationType(text)))
+                val destType = getDestinationType(text)
+                destinations.add(QrDestination(addr, destType))
+                if (destType != DestinationType.BitcoinAddress && addr.getHashZkType() == null) {
+                    hasUnverifiableInstruction = true
+                }
             }
 
             val queryString = text.substringAfter("?", "")
@@ -29,10 +37,15 @@ class QrParser(qrText: String) {
             onChainEncryptionText = params["branta_id"]
             onChainEncryptionSecret = params["branta_secret"]
 
-            params["lightning"]?.let { destinations.add(QrDestination(it, detectPlainTextType(it))) }
-            params["bolt12"]?.let { destinations.add(QrDestination(it, detectPlainTextType(it))) }
-            params["ark"]?.let { destinations.add(QrDestination(it, detectPlainTextType(it))) }
-            params["silent_payment"]?.let { destinations.add(QrDestination(it, detectPlainTextType(it))) }
+            addBindable(params["lightning"], params["lightning"]?.let { detectPlainTextType(it) }, onChain = false)
+            addBindable(params["bolt12"], params["bolt12"]?.let { detectPlainTextType(it) }, onChain = false)
+            addBindable(params["ark"], params["ark"]?.let { detectPlainTextType(it) }, onChain = false)
+            addBindable(params["silent_payment"], params["silent_payment"]?.let { detectPlainTextType(it) }, onChain = false)
+            addBindable(params["bc"], DestinationType.BitcoinAddress, onChain = true)
+            addBindable(params["tb"], DestinationType.BitcoinAddress, onChain = true)
+            addBindable(params["sp"], params["sp"]?.let { detectPlainTextType(it) }, onChain = false)
+            addBindable(params["lno"], params["lno"]?.let { detectPlainTextType(it) ?: DestinationType.Bolt12 }, onChain = false)
+            if (!params["pay"].isNullOrEmpty()) hasUnverifiableInstruction = true
         } else if (text.contains(":")) {
             // Unknown scheme — add as-is with no type
             destinations.add(QrDestination(text, null))
@@ -42,6 +55,14 @@ class QrParser(qrText: String) {
     }
 
     fun isOnChainZk(): Boolean = onChainEncryptionText != null && onChainEncryptionSecret != null
+
+    private fun addBindable(value: String?, type: DestinationType?, onChain: Boolean) {
+        if (value == null) return
+        destinations.add(QrDestination(value, type))
+        if (value.isNotEmpty() && !onChain && value.getHashZkType() == null) {
+            hasUnverifiableInstruction = true
+        }
+    }
 
     private fun extractAddress(text: String): String? {
         val colonIdx = text.indexOf(':')

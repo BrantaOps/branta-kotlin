@@ -15,6 +15,11 @@ import pro.branta.v2.models.Payment
 import pro.branta.v2.models.PaymentsResult
 import java.net.URLEncoder
 
+private const val TAMPERED_MESSAGE =
+    "The Bitcoin address in the QR code does not match the address verified by Branta. The QR code may have been tampered with."
+
+private val bech32Regex = Regex("^(bc|tb|bcrt)1", RegexOption.IGNORE_CASE)
+
 class BrantaService(
     private val defaultOptions: BrantaClientOptions? = null,
     private val client: IBrantaClient = BrantaClient(defaultOptions),
@@ -23,19 +28,38 @@ class BrantaService(
 ) : IBrantaService {
 
     private fun addressesMatch(a: String, b: String): Boolean {
-        fun isBech32(v: String) = v.startsWith("bc1", ignoreCase = true)
+        fun isBech32(v: String) = bech32Regex.containsMatchIn(v)
         return if (isBech32(a) && isBech32(b)) a.equals(b, ignoreCase = true) else a == b
+    }
+
+    private fun tampered() = BrantaPaymentException(TAMPERED_MESSAGE, BrantaPaymentExceptionReason.Tampered)
+
+    private fun uniformOnChainAddress(parser: QrParser): String? {
+        val addresses = parser.destinations
+            .filter { it.type == DestinationType.BitcoinAddress && it.value.isNotBlank() }
+            .map { it.value }
+        if (addresses.isEmpty()) return null
+        val first = addresses.first()
+        for (address in addresses.drop(1)) {
+            if (!addressesMatch(first, address)) throw tampered()
+        }
+        return first
     }
 
     override suspend fun getPaymentsByQrCode(qrText: String, options: BrantaClientOptions?): PaymentsResult {
         val parser = QrParser(qrText)
+        val expectedOnChainAddress = uniformOnChainAddress(parser)
+
+        if (parser.hasUnverifiableInstruction) {
+            val lookup = parser.onChainEncryptionText ?: parser.destination ?: ""
+            return PaymentsResult(emptyList(), buildVerifyUrl(options, lookup))
+        }
 
         if (parser.isOnChainZk()) {
             val additionalValues = parser.destinations
                 .filter { it.value.getHashZkType() != null }
                 .map { it.value }
-            val onChainAddress = parser.destinations.firstOrNull { it.type == DestinationType.BitcoinAddress }?.value
-            return getPaymentsForZk(parser.onChainEncryptionText!!, parser.onChainEncryptionSecret, additionalValues, onChainAddress, options)
+            return getPaymentsForZk(parser.onChainEncryptionText!!, parser.onChainEncryptionSecret, additionalValues, expectedOnChainAddress, options)
         }
 
         val destination = parser.destination ?: return PaymentsResult(emptyList(), buildVerifyUrl(options, ""))
@@ -56,20 +80,24 @@ class BrantaService(
     ): PaymentsResult {
         val payments = client.getPayments(lookupValue, options)
         val keys = mutableMapOf<String, String>()
+        val bound = mutableListOf<Payment>()
 
         for (payment in payments) {
-            decryptDestinations(payment, lookupValue, encryptionKey, null, keys, expectedOnChainAddress)
+            val onChainBound = decryptDestinations(payment, lookupValue, encryptionKey, null, keys, expectedOnChainAddress)
+            var hashesBound = true
             for (value in additionalHashValues) {
-                decryptHashZkDestinations(payment, value, keys)
+                if (!decryptHashZkDestinations(payment, value, keys)) hashesBound = false
             }
+            if (onChainBound && hashesBound) bound.add(payment)
         }
 
-        return PaymentsResult(payments, buildVerifyUrl(options, lookupValue, keys))
+        return PaymentsResult(bound, buildVerifyUrl(options, lookupValue, keys))
     }
 
-    private fun decryptHashZkDestinations(payment: Payment, plainValue: String, keys: MutableMap<String, String>) {
-        val hashZkType = plainValue.getHashZkType() ?: return
+    private fun decryptHashZkDestinations(payment: Payment, plainValue: String, keys: MutableMap<String, String>): Boolean {
+        val hashZkType = plainValue.getHashZkType() ?: return false
         val key = plainValue.toNormalizedHash()
+        var bound = false
 
         for (destination in payment.destinations) {
             if (!destination.isZk || destination.type != hashZkType) continue
@@ -78,10 +106,12 @@ class BrantaService(
                 destination.isEncrypted = false
                 destination.zkId?.let { keys.putIfAbsent(it, key) }
                 tryDecryptMetadata(payment, destination, key)
+                bound = true
             } catch (_: Exception) {
                 // Key didn't match this destination — leave it encrypted.
             }
         }
+        return bound
     }
 
     override suspend fun getPayments(
@@ -126,7 +156,8 @@ class BrantaService(
         hashZkType: DestinationType?,
         keys: MutableMap<String, String>,
         expectedOnChainAddress: String? = null
-    ) {
+    ): Boolean {
+        var onChainBound = expectedOnChainAddress == null
         for (destination in payment.destinations) {
             destination.isEncrypted = destination.isZk
             if (!destination.isZk) continue
@@ -142,12 +173,10 @@ class BrantaService(
                 }
 
                 if (expectedOnChainAddress != null && !addressesMatch(decrypted, expectedOnChainAddress)) {
-                    throw BrantaPaymentException(
-                        "The Bitcoin address in the QR code does not match the address verified by Branta. The QR code may have been tampered with.",
-                        BrantaPaymentExceptionReason.Tampered
-                    )
+                    throw tampered()
                 }
 
+                if (expectedOnChainAddress != null) onChainBound = true
                 destination.value = decrypted
                 destination.isEncrypted = false
                 destination.zkId?.let { keys.putIfAbsent(it, encryptionKey) }
@@ -164,6 +193,7 @@ class BrantaService(
                 }
             }
         }
+        return onChainBound
     }
 
     private fun tryDecryptMetadata(payment: Payment, destination: Destination, keyUsed: String) {
