@@ -4,6 +4,8 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import pro.branta.BrantaClientOptions
 import pro.branta.enums.BrantaServerBaseUrl
@@ -34,6 +36,15 @@ class ExampleQrCodesTest {
     }
 
     companion object {
+        @JvmStatic
+        @BeforeAll
+        fun skipUnlessOptIn() {
+            assumeTrue(
+                System.getenv("BRANTA_RUN_INTEGRATION") == "1",
+                "Live lookups skipped unless BRANTA_RUN_INTEGRATION=1",
+            )
+        }
+
         private val apiKey: String? = System.getenv("BRANTA_API_KEY")
 
         // Production QR codes

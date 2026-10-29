@@ -16,5 +16,3 @@ jobs:
           java-version: 11
       - name: Test
         run: ./gradlew test
-        env:
-          BRANTA_SKIP_INTEGRATION: "1"

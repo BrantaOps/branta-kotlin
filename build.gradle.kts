@@ -33,7 +33,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    if (System.getenv("BRANTA_SKIP_INTEGRATION") != null) {
+    if (System.getenv("BRANTA_RUN_INTEGRATION") != "1") {
         filter {
             excludeTestsMatching("*.ExampleQrCodesTest")
         }
