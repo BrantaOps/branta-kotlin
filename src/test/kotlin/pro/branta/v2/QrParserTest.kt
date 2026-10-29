@@ -145,6 +145,52 @@ class QrParserTest {
     }
 
     @Test
+    fun `bip321 bc and tb params are on-chain addresses`() {
+        val parser = QrParser("bitcoin:?bc=bc1qmerchant&tb=tb1qtest")
+
+        assertEquals(listOf("bc1qmerchant", "tb1qtest"), parser.destinations.map { it.value })
+        assertEquals(DestinationType.BitcoinAddress, parser.destinations[0].type)
+        assertEquals(DestinationType.BitcoinAddress, parser.destinations[1].type)
+        assertFalse(parser.hasUnverifiableInstruction)
+    }
+
+    @Test
+    fun `sp param adds silent payment`() {
+        val parser = QrParser("bitcoin:bc1qmerchant?sp=sp1qqexample")
+
+        assertEquals("sp1qqexample", parser.destinations[1].value)
+        assertEquals(DestinationType.SilentPayment, parser.destinations[1].type)
+        assertFalse(parser.hasUnverifiableInstruction)
+    }
+
+    @Test
+    fun `lno and pay params are unverifiable`() {
+        val lno = QrParser("bitcoin:bc1qmerchant?lno=lno1qqexample")
+        assertEquals("lno1qqexample", lno.destinations[1].value)
+        assertEquals(DestinationType.Bolt12, lno.destinations[1].type)
+        assertTrue(lno.hasUnverifiableInstruction)
+
+        val pay = QrParser("bitcoin:bc1qmerchant?pay=bitcoin:bc1qother")
+        assertTrue(pay.hasUnverifiableInstruction)
+        assertEquals(listOf("bc1qmerchant"), pay.destinations.map { it.value })
+    }
+
+    @Test
+    fun `bolt12 and lnurl instructions are unverifiable`() {
+        assertTrue(QrParser("bitcoin:bc1qmerchant?bolt12=lno1qqexample").hasUnverifiableInstruction)
+        assertTrue(QrParser("bitcoin:bc1qmerchant?lightning=LNURL1example").hasUnverifiableInstruction)
+        assertTrue(QrParser("lightning:LNURL1example").hasUnverifiableInstruction)
+        assertTrue(QrParser("lightning:lno1qqexample").hasUnverifiableInstruction)
+    }
+
+    @Test
+    fun `hash-zk instructions are bindable`() {
+        val parser = QrParser("bitcoin:bc1qmerchant?lightning=lnbc100n1ptest&ark=ark1example&silent_payment=sp1qqexample")
+        assertFalse(parser.hasUnverifiableInstruction)
+        assertFalse(QrParser("lightning:lnbc100n1ptest").hasUnverifiableInstruction)
+    }
+
+    @Test
     fun `whitespace is trimmed from input`() {
         val parser = QrParser("  1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa  ")
         assertEquals("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", parser.destination)
