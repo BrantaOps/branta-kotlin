@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "pro.branta"
-version = "3.2.4"
+version = "4.0.0"
 
 kotlin {
     jvmToolchain(11)
@@ -48,7 +48,7 @@ mavenPublishing {
 
     pom {
         name.set("Branta Kotlin SDK")
-        description.set("Kotlin SDK for the Branta V2 API — payment destination lookup and registration with zero-knowledge encryption support")
+        description.set("Kotlin SDK for the Branta V2 API — verify a payment destination or register one")
         url.set("https://branta.pro")
         licenses {
             license {

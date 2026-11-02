@@ -3,7 +3,6 @@ package pro.branta
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import pro.branta.enums.DestinationType
-import pro.branta.v2.*
 
 class BrantaExtensionsTest {
 
@@ -47,22 +46,22 @@ class BrantaExtensionsTest {
     fun `isSilentPayment returns false for non-silent`() = assertFalse("bc1qtest".isSilentPayment())
 
     @Test
-    fun `getHashZkType returns Bolt11 for bolt11 invoice`() =
-        assertEquals(DestinationType.Bolt11, "lnbc100n1ptest".getHashZkType())
+    fun `getDerivedKeyType returns Bolt11 for bolt11 invoice`() =
+        assertEquals(DestinationType.Bolt11, "lnbc100n1ptest".getDerivedKeyType())
 
     @Test
-    fun `getHashZkType returns ArkAddress for ark address`() {
-        assertEquals(DestinationType.ArkAddress, "ark1testaddress".getHashZkType())
-        assertEquals(DestinationType.ArkAddress, "tark1testaddress".getHashZkType())
+    fun `getDerivedKeyType returns ArkAddress for ark address`() {
+        assertEquals(DestinationType.ArkAddress, "ark1testaddress".getDerivedKeyType())
+        assertEquals(DestinationType.ArkAddress, "tark1testaddress".getDerivedKeyType())
     }
 
     @Test
-    fun `getHashZkType returns SilentPayment for silent payment`() =
-        assertEquals(DestinationType.SilentPayment, "sp1testaddress".getHashZkType())
+    fun `getDerivedKeyType returns SilentPayment for silent payment`() =
+        assertEquals(DestinationType.SilentPayment, "sp1testaddress".getDerivedKeyType())
 
     @Test
-    fun `getHashZkType returns null for bitcoin address`() =
-        assertNull("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".getHashZkType())
+    fun `getDerivedKeyType returns null for bitcoin address`() =
+        assertNull("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".getDerivedKeyType())
 
     @Test
     fun `toNormalizedHash lowercases before hashing`() {
