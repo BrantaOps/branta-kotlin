@@ -62,18 +62,19 @@ private fun platformToElement(platform: Platform): JsonObject = buildJsonObject 
 
 private fun paymentFromElement(element: JsonElement): Payment {
     val obj = element.jsonObject
-    val destinations = obj["destinations"]?.jsonArray?.map { destinationFromElement(it) }?.toMutableList()
+    val destinations = obj["destinations"]?.takeUnless { it is JsonNull }?.jsonArray
+        ?.map { destinationFromElement(it) }?.toMutableList()
         ?: mutableListOf()
     return Payment(
         destinations = destinations,
         createdAt = obj.string("created_at"),
-        ttl = obj["ttl"]?.jsonPrimitive?.intOrNull,
+        ttl = obj["ttl"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.intOrNull,
         metadata = obj.string("metadata"),
         platform = obj.string("platform"),
         platformLogoUrl = obj.string("platform_logo_url"),
         platformLogoLightUrl = obj.string("platform_logo_light_url"),
-        parentPlatform = obj["parent_platform"]?.let { platformFromElement(it) },
-        childPlatform = obj["child_platform"]?.let { platformFromElement(it) }
+        parentPlatform = obj["parent_platform"]?.takeUnless { it is JsonNull }?.let { platformFromElement(it) },
+        childPlatform = obj["child_platform"]?.takeUnless { it is JsonNull }?.let { platformFromElement(it) }
     )
 }
 

@@ -217,6 +217,16 @@ class BrantaServiceTest {
     }
 
     @Test
+    fun `null platform objects parse as absent`() {
+        val payment = paymentFromJson(
+            """{"destinations":[],"ttl":null,"parent_platform":null,"child_platform":null}"""
+        )
+        assertNull(payment.ttl)
+        assertNull(payment.parentPlatform)
+        assertNull(payment.childPlatform)
+    }
+
+    @Test
     fun `description is lifted after the DEK decrypts`() = runTest {
         val dek = "dek-secret"
         val metadata = """{"description":"Invoice"}"""
