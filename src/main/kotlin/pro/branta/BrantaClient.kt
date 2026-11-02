@@ -18,16 +18,16 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal interface IBrantaClient {
+internal interface BrantaClient {
     suspend fun getPayments(destinationValue: String, options: BrantaApiOptions? = null): List<Payment>
     suspend fun postPayment(payment: Payment, options: BrantaApiOptions? = null): Payment?
     suspend fun isApiKeyValid(options: BrantaApiOptions? = null): Boolean
 }
 
-internal class BrantaClient(
+internal class HttpBrantaClient(
     private val defaultOptions: BrantaApiOptions? = null,
     private val httpClient: OkHttpClient = OkHttpClient()
-) : IBrantaClient {
+) : BrantaClient {
 
     override suspend fun getPayments(destinationValue: String, options: BrantaApiOptions?): List<Payment> {
         val baseUrl = defaultOptions.environmentUrl(options)

@@ -45,9 +45,8 @@ private fun uniformOnChainAddress(parser: QrParser): String? {
 
 class BrantaService internal constructor(
     private val defaultOptions: BrantaApiOptions,
-    private val client: IBrantaClient,
-    private val aesEncryption: IAesEncryption,
-    private val secretGenerator: ISecretGenerator
+    private val client: BrantaClient,
+    private val secretGenerator: SecretGenerator
 ) {
     constructor(
         environment: BrantaEnvironment,
@@ -56,12 +55,11 @@ class BrantaService internal constructor(
         httpClient: OkHttpClient? = null
     ) : this(
         BrantaApiOptions(environment = environment, apiKey = apiKey, hmacSecret = hmacSecret),
-        BrantaClient(
+        HttpBrantaClient(
             BrantaApiOptions(environment = environment, apiKey = apiKey, hmacSecret = hmacSecret),
             httpClient ?: OkHttpClient()
         ),
-        AesEncryptionService(),
-        GuidSecretGenerator()
+        UuidSecretGenerator()
     )
 
     suspend fun verify(input: String, options: BrantaApiOptions? = null): VerifyResult {
@@ -135,7 +133,7 @@ class BrantaService internal constructor(
         for (destination in payment.destinations) {
             if (!destination.isEncrypted || destination.type != derivedType) continue
             val decrypted = try {
-                aesEncryption.decrypt(destination.value, key)
+                AesEncryption.decrypt(destination.value, key)
             } catch (_: Exception) {
                 continue
             }
@@ -155,7 +153,7 @@ class BrantaService internal constructor(
     ): Pair<List<Payment>, String> {
         val normalizedDestination = destinationValue.lowercase()
         val key = normalizedDestination.toNormalizedHash()
-        val lookupValue = aesEncryption.encrypt(normalizedDestination, key, deterministicNonce = true)
+        val lookupValue = AesEncryption.encrypt(normalizedDestination, key, deterministicNonce = true)
         val payments = client.getPayments(lookupValue, options)
         val keys = linkedMapOf<String, String>()
         val bound = mutableListOf<Payment>()
@@ -177,7 +175,7 @@ class BrantaService internal constructor(
             if (destination.type != DestinationType.BitcoinAddress) continue
             if (encryptionKey == null) continue
             val decrypted = try {
-                aesEncryption.decrypt(destination.value, encryptionKey)
+                AesEncryption.decrypt(destination.value, encryptionKey)
             } catch (_: Exception) {
                 continue
             }
@@ -197,8 +195,8 @@ class BrantaService internal constructor(
         val encryptedDek = destination.encryptedDek ?: return
         if (payment.metadata == null || payment.isMetadataDecrypted) return
         try {
-            val dek = aesEncryption.decrypt(encryptedDek, keyUsed)
-            payment.metadata = aesEncryption.decrypt(payment.metadata!!, dek)
+            val dek = AesEncryption.decrypt(encryptedDek, keyUsed)
+            payment.metadata = AesEncryption.decrypt(payment.metadata!!, dek)
             payment.isMetadataDecrypted = true
             liftDescriptionFromMetadata(payment)
         } catch (_: Exception) {
@@ -213,7 +211,7 @@ class BrantaService internal constructor(
         var dek: String? = null
         if (submitted.metadata != null && submitted.destinations.isNotEmpty()) {
             dek = secretGenerator.generate()
-            submitted.metadata = aesEncryption.encrypt(submitted.metadata!!, dek, deterministicNonce = false)
+            submitted.metadata = AesEncryption.encrypt(submitted.metadata!!, dek, deterministicNonce = false)
         }
 
         val secret = secretGenerator.generate()
@@ -223,21 +221,21 @@ class BrantaService internal constructor(
             val detected = destination.type ?: detectDestinationType(destination.value)
             if (destination.type == null && detected != null) destination.type = detected
             if (detected == DestinationType.BitcoinAddress) {
-                destination.value = aesEncryption.encrypt(
+                destination.value = AesEncryption.encrypt(
                     destination.value,
                     secret,
                     deterministicNonce = secretGenerator.deterministicNonce
                 )
                 encryptedToKey[destination.value] = secret
-                if (dek != null) destination.encryptedDek = aesEncryption.encrypt(dek, secret, deterministicNonce = false)
+                if (dek != null) destination.encryptedDek = AesEncryption.encrypt(dek, secret, deterministicNonce = false)
             } else {
                 val derivedType = destination.value.getDerivedKeyType()
                     ?: throw BrantaPaymentException("destination type '${destination.type}' cannot be encrypted")
                 val normalizedValue = destination.value.lowercase()
                 val key = normalizedValue.toNormalizedHash()
-                destination.value = aesEncryption.encrypt(normalizedValue, key, deterministicNonce = true)
+                destination.value = AesEncryption.encrypt(normalizedValue, key, deterministicNonce = true)
                 encryptedToKey[destination.value] = key
-                if (dek != null) destination.encryptedDek = aesEncryption.encrypt(dek, key, deterministicNonce = false)
+                if (dek != null) destination.encryptedDek = AesEncryption.encrypt(dek, key, deterministicNonce = false)
             }
         }
 

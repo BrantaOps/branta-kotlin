@@ -64,25 +64,12 @@ internal object AesEncryption {
         MessageDigest.getInstance("SHA-256").digest(data)
 }
 
-internal interface IAesEncryption {
-    fun encrypt(value: String, secret: String, deterministicNonce: Boolean = false): String
-    fun decrypt(encryptedValue: String, secret: String): String
-}
-
-internal class AesEncryptionService : IAesEncryption {
-    override fun encrypt(value: String, secret: String, deterministicNonce: Boolean): String =
-        AesEncryption.encrypt(value, secret, deterministicNonce)
-
-    override fun decrypt(encryptedValue: String, secret: String): String =
-        AesEncryption.decrypt(encryptedValue, secret)
-}
-
-internal interface ISecretGenerator {
+internal interface SecretGenerator {
     fun generate(): String
     val deterministicNonce: Boolean
 }
 
-internal class GuidSecretGenerator : ISecretGenerator {
+internal class UuidSecretGenerator : SecretGenerator {
     override fun generate(): String = java.util.UUID.randomUUID().toString()
     override val deterministicNonce: Boolean = false
 }

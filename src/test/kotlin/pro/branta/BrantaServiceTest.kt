@@ -20,7 +20,7 @@ class BrantaServiceTest {
     private val address = "bc1qmerchant"
     private val bolt11 = "lnbc100n1ptest"
 
-    private class FakeClient : IBrantaClient {
+    private class FakeClient : BrantaClient {
         val lookups = mutableListOf<String>()
         var payments: List<Payment> = emptyList()
         var posted: Payment? = null
@@ -37,7 +37,7 @@ class BrantaServiceTest {
         override suspend fun isApiKeyValid(options: BrantaApiOptions?): Boolean = true
     }
 
-    private class FixedSecret : ISecretGenerator {
+    private class FixedSecret : SecretGenerator {
         private val values: ArrayDeque<String>
         constructor(vararg values: String) {
             this.values = ArrayDeque(values.toList())
@@ -46,11 +46,10 @@ class BrantaServiceTest {
         override val deterministicNonce: Boolean = false
     }
 
-    private fun service(client: FakeClient, secrets: ISecretGenerator = FixedSecret(secret)): BrantaService =
+    private fun service(client: FakeClient, secrets: SecretGenerator = FixedSecret(secret)): BrantaService =
         BrantaService(
             BrantaApiOptions(environment = BrantaEnvironment.Localhost),
             client,
-            AesEncryptionService(),
             secrets
         )
 

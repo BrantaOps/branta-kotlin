@@ -33,7 +33,7 @@ class BrantaClientTest {
                     .build()
             }
             .build()
-        return BrantaClient(
+        return HttpBrantaClient(
             BrantaApiOptions(environment = BrantaEnvironment.Localhost, apiKey = apiKey),
             httpClient
         )
@@ -66,7 +66,7 @@ class BrantaClientTest {
     @Test
     fun `network failure is incomplete`() = runTest {
         val httpClient = OkHttpClient.Builder().addInterceptor { throw IOException("offline") }.build()
-        val client = BrantaClient(BrantaApiOptions(environment = BrantaEnvironment.Localhost), httpClient)
+        val client = HttpBrantaClient(BrantaApiOptions(environment = BrantaEnvironment.Localhost), httpClient)
         assertFailsWith<IncompleteException> { client.getPayments("value") }
     }
 
@@ -96,7 +96,7 @@ class BrantaClientTest {
                 .body("""{"destinations":[{"value":"cipher","zk":true}]}""".toResponseBody("application/json".toMediaType()))
                 .build()
         }.build()
-        val client = BrantaClient(
+        val client = HttpBrantaClient(
             BrantaApiOptions(environment = BrantaEnvironment.Localhost, apiKey = "key"),
             httpClient
         )
