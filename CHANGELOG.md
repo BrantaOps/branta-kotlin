@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-11-02
+
+### Changed
+- Breaking: `verify` replaces `getPaymentsByQrCode` and `getPayments`. It returns `match`, `unknown`, `tampered`, or `incomplete`. A swapped address is `tampered`. A 404, a bare address, and a bolt11 / Ark / silent-payment lookup that does not decrypt are `unknown`. 5xx, 429, and no network are `incomplete`.
+- Breaking: removed `PrivacyMode`. Every destination is encrypted. `BrantaClientOptions` and `BrantaServerBaseUrl` are now `BrantaApiOptions` and `BrantaEnvironment`.
+- Breaking: `Destination.id` is the public name for the wire field `zk_id`. `addPayment` encrypts a copy and leaves the caller's `Payment` unchanged. Description is stored in encrypted metadata. An unset TTL is omitted. `DestinationType` is `bitcoin_address`, `bolt11`, `ark_address`, and `silent_payment`.
+- The public library no longer includes the HTTP client, QR parser, AES helpers, or `QrParseException`. Sources moved out of the `pro.branta.v2` package. HTTP paths stay `/v2/`.
+
 ## [3.2.4] - 2026-10-29
 
 ### Fixed

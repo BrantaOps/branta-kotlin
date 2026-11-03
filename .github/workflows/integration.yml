@@ -24,4 +24,4 @@ jobs:
             exit 1
           fi
       - name: Example QR codes against staging and production
-        run: ./gradlew test --tests pro.branta.v2.ExampleQrCodesTest
+        run: ./gradlew test --tests pro.branta.ExampleQrCodesTest

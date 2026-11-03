@@ -1,4 +1,4 @@
-package pro.branta.v2.models
+package pro.branta.models
 
 data class AddPaymentResult(
     val payment: Payment,

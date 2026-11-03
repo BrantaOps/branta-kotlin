@@ -4,8 +4,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import pro.branta.v2.AesEncryption
-import pro.branta.v2.toNormalizedHash
 import java.util.Base64
 
 class AesEncryptionTest {

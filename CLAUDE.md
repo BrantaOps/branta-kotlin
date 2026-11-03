@@ -1,55 +1,21 @@
 # Branta Kotlin SDK
 
-If you are implementing this SDK in a consumer project, see the **Integration Guide** section at the top of `README.md`.
+If you are implementing this SDK in a consumer project, product rules (send vs receive, `match` / `unknown` / `tampered`, parent platforms) live in the [developer docs](https://developer.branta.pro). `README.md` is the Kotlin package: install, constructor, and samples.
 
----
-
-## Developer notes (SDK contributors)
-
-### Project layout
-
-- `src/main/kotlin/pro/branta/` — top-level: `BrantaClientOptions` plus `enums/` and `exceptions/`
-- `src/main/kotlin/pro/branta/v2/` — V2 API surface: services, builder, parser, crypto, extensions
-- `src/main/kotlin/pro/branta/v2/interfaces/` — `IBrantaService`, `IBrantaClient`, `IAesEncryption`, `ISecretGenerator`
-- `src/main/kotlin/pro/branta/v2/models/` — `Payment`, `Destination`, `PaymentsResult`, `Platform`, `AddPaymentResult`
-- `src/test/kotlin/pro/branta/` — unit tests mirroring the main layout
-
-### Build / test
+## Commands
 
 ```bash
-./gradlew build        # compile + test
-./gradlew test         # tests only
-./gradlew publishToMavenLocal   # local Maven install for testing in a consumer project
+./gradlew test
+./gradlew build
 ```
 
-**Note:** `gradle/wrapper/gradle-wrapper.jar` is not committed (binary file). If you do not have the wrapper, run once with Gradle installed:
-```bash
-gradle wrapper --gradle-version 8.10.2
-```
+Live example-QR lookups run only when `BRANTA_RUN_INTEGRATION=1`.
 
-### Version file
+## Layout
 
-Version is in `build.gradle.kts` (`version = "X.Y.Z"`). Update here for releases.
+Public API is `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyResult`, and the payment models in `pro.branta`.
 
-### Key behaviors to preserve
-
-- **`PrivacyMode.Strict` is the default.** `getPayments` throws `BrantaPaymentException` for plain-text on-chain lookups; `getPaymentsByQrCode` returns an empty `PaymentsResult` with a populated `verifyUrl`. `addPayment` rejects any non-ZK destination.
-- **`verifyUrl` is always returned**, including on a miss.
-- **ZK modes.** Bitcoin addresses use a random GUID secret (from `ISecretGenerator`). Bolt11, ArkAddress, and SilentPayment use a deterministic key derived from `SHA256(lowercase(value))`.
-- **Metadata encryption.** When `Payment.metadata` is set and at least one ZK destination exists, a DEK is generated, metadata is encrypted with the DEK, and each ZK destination stores its own `encryptedDek = AES(DEK, destinationKey)`.
-- **Decryption failures are silently swallowed.** Wrong key leaves `isEncrypted = true`; failed DEK decryption leaves `metadata` as-is and `isMetadataDecrypted = false`.
-- **Logo URL domain verification.** After every GET, `BrantaClient` verifies that `platformLogoUrl`, `platformLogoLightUrl`, `parentPlatform.logoUrl`/`logoLightUrl`, and `childPlatform.logoUrl`/`logoLightUrl` each match the configured base URL's origin (skipping null/blank fields); every payment in the list is checked, not just the first. Mismatch throws `BrantaPaymentException` naming the offending field.
-
-### Conventions
-
-- Package root: `pro.branta`; V2 API under `pro.branta.v2`
-- Interfaces use `I` prefix: `IBrantaService`, `IBrantaClient`, `IAesEncryption`, `ISecretGenerator`
-- Enum values: `PascalCase` (`PrivacyMode.Strict`, `DestinationType.BitcoinAddress`)
-- Async: `suspend` functions — no `Async` suffix, no `CancellationToken` parameter (coroutine scope handles it)
-- No DI framework: `BrantaService` constructor accepts all dependencies with defaults for consumer use; inject mocks for tests
-- Tests: JUnit 5 + MockK; `coEvery/coVerify` for suspend functions; `runTest` from `kotlinx-coroutines-test`
-- Keep parity with `branta-dotnet`, `branta-js`, `branta-dart`, and `branta-python`
-
-### Publishing
-
-See `README.md` → Publishing section. Requires a GPG key and Maven Central credentials in `~/.gradle/gradle.properties`.
+- `BrantaService` orchestrates encrypt/decrypt around HTTP. `HttpBrantaClient` is internal.
+- `verify` is the only lookup. A raw on-chain address is `unknown` and does not GET. `addPayment` encrypts a copy.
+- `DestinationType` is only what `addPayment` accepts: `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`.
+- `tampered` and `incomplete` are statuses. Do not throw them. Logo-domain mismatches still throw `BrantaPaymentException`.
