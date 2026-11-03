@@ -18,6 +18,7 @@ import kotlin.test.assertFailsWith
 class BrantaServiceTest {
     private val secret = "test-secret"
     private val address = "bc1qmerchant"
+    private val swapped = "bc1qattacker"
     private val bolt11 = "lnbc100n1ptest"
 
     private class FakeClient : BrantaClient {
@@ -114,6 +115,99 @@ class BrantaServiceTest {
             "bitcoin:$address?branta_id=${encodeUriComponent(cipher)}&branta_secret=wrong"
         )
         assertEquals(VerifyStatus.Unknown, result.status)
+    }
+
+    @Test
+    fun `swapped address with wrong secret is unknown`() = runTest {
+        val cipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = cipher, type = DestinationType.BitcoinAddress, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(
+            "bitcoin:$swapped?branta_id=${encodeUriComponent(cipher)}&branta_secret=00000000-0000-4000-8000-000000000000"
+        )
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(result.payments.isEmpty())
+    }
+
+    @Test
+    fun `attacker lightning or ark leg is unknown`() = runTest {
+        val cipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = cipher, type = DestinationType.BitcoinAddress, isEncrypted = true)
+                )
+            )
+        )
+        assertEquals(
+            VerifyStatus.Unknown,
+            service(client).verify(
+                "bitcoin:$address?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret&lightning=lnbc1attacker"
+            ).status,
+        )
+        assertEquals(
+            VerifyStatus.Unknown,
+            service(client).verify(
+                "bitcoin:$address?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret&ark=ark1attacker"
+            ).status,
+        )
+    }
+
+    @Test
+    fun `bip321 bc swap is tampered and matching bc is match`() = runTest {
+        val cipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = cipher, type = DestinationType.BitcoinAddress, isEncrypted = true)
+                )
+            )
+        )
+        assertEquals(
+            VerifyStatus.Tampered,
+            service(client).verify(
+                "bitcoin:?bc=$swapped&branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret"
+            ).status,
+        )
+        assertEquals(
+            VerifyStatus.Tampered,
+            service(client).verify(
+                "bitcoin:$address?bc=$swapped&branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret"
+            ).status,
+        )
+        val match = service(client).verify(
+            "bitcoin:?bc=$address&branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret"
+        )
+        assertEquals(VerifyStatus.Match, match.status)
+        assertEquals(address, match.payments.single().destinations.single().value)
+    }
+
+    @Test
+    fun `control char scheme with swapped address is tampered`() = runTest {
+        val cipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = cipher, type = DestinationType.BitcoinAddress, isEncrypted = true)
+                )
+            )
+        )
+        for (uri in listOf(
+            "bitcoi\tn:$swapped?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret",
+            "bitcoi\nn:$swapped?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret",
+            "\u0001bitcoin:$swapped?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret",
+        )) {
+            assertEquals(VerifyStatus.Tampered, service(client).verify(uri).status, uri)
+        }
     }
 
     @Test
