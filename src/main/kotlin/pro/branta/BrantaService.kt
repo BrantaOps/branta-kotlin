@@ -14,9 +14,17 @@ import java.util.UUID
 
 private class TamperedException : Exception()
 
+private fun matchedDestinationsFrom(payments: List<Payment>): List<Destination> =
+    payments.flatMap { payment -> payment.destinations.filter { !it.isEncrypted } }
+
 private fun toVerifyResult(payments: List<Payment>, verifyUrl: String): VerifyResult =
     if (payments.isEmpty()) VerifyResult(VerifyStatus.Unknown, verifyUrl)
-    else VerifyResult(VerifyStatus.Match, verifyUrl, payments)
+    else VerifyResult(
+        status = VerifyStatus.Match,
+        verifyUrl = verifyUrl,
+        payments = payments,
+        matchedDestinations = matchedDestinationsFrom(payments)
+    )
 
 private fun copyPayment(payment: Payment): Payment = payment.copy(
     destinations = payment.destinations.map { it.copy() }.toMutableList(),
@@ -28,12 +36,14 @@ private val bech32Regex = Regex("^(bc|tb|bcrt)1", RegexOption.IGNORE_CASE)
 
 private fun addressesMatch(a: String, b: String): Boolean {
     fun isBech32(value: String) = bech32Regex.containsMatchIn(value)
-    return if (isBech32(a) && isBech32(b)) a.equals(b, ignoreCase = true) else a == b
+    if (isBech32(a) && isBech32(b)) return a.equals(b, ignoreCase = true)
+    if (a.startsWith("0x") && b.startsWith("0x")) return a.equals(b, ignoreCase = true)
+    return a == b
 }
 
 private fun uniformOnChainAddress(parser: QrParser): String? {
     val addresses = parser.destinations
-        .filter { it.type == DestinationType.BitcoinAddress && it.value.isNotBlank() }
+        .filter { it.secretKey && it.value.isNotBlank() }
         .map { it.value }
     if (addresses.isEmpty()) return null
     val first = addresses.first()
@@ -82,6 +92,7 @@ class BrantaService internal constructor(
                     parser.onChainEncryptionSecret,
                     additionalValues,
                     expectedOnChainAddress,
+                    parser.expectedSecretKeyTypes.toSet(),
                     options
                 )
                 return toVerifyResult(lookedUp.first, lookedUp.second)
@@ -105,13 +116,20 @@ class BrantaService internal constructor(
         encryptionKey: String?,
         additionalHashValues: List<String>,
         expectedOnChainAddress: String?,
+        expectedOnChainTypes: Set<DestinationType>,
         options: BrantaApiOptions?
     ): Pair<List<Payment>, String> {
         val payments = client.getPayments(lookupValue, options)
         val keys = linkedMapOf<String, String>()
         val bound = mutableListOf<Payment>()
         for (payment in payments) {
-            val onChainBound = decryptDestinations(payment, encryptionKey, keys, expectedOnChainAddress)
+            val onChainBound = decryptDestinations(
+                payment,
+                encryptionKey,
+                keys,
+                expectedOnChainAddress,
+                expectedOnChainTypes
+            )
             var hashesBound = true
             for (value in additionalHashValues) {
                 if (!decryptDerivedKeyDestinations(payment, value, keys)) hashesBound = false
@@ -167,26 +185,37 @@ class BrantaService internal constructor(
         payment: Payment,
         encryptionKey: String?,
         keys: MutableMap<String, String>,
-        expectedOnChainAddress: String?
+        expectedOnChainAddress: String?,
+        expectedOnChainTypes: Set<DestinationType>
     ): Boolean {
         var onChainBound = expectedOnChainAddress == null
+        var decryptedExpectedRail = false
         for (destination in payment.destinations) {
             if (!destination.isEncrypted) continue
-            if (destination.type != DestinationType.BitcoinAddress) continue
+            val type = destination.type ?: continue
+            if (!DestinationType.isSecretKeyAddress(type)) continue
+            // Outside this QR's rail family (e.g. bitcoin when scanning pol:) — leave encrypted.
+            if (expectedOnChainTypes.isNotEmpty() && type !in expectedOnChainTypes) continue
             if (encryptionKey == null) continue
             val decrypted = try {
                 AesEncryption.decrypt(destination.value, encryptionKey)
             } catch (_: Exception) {
                 continue
             }
+            decryptedExpectedRail = true
+            // Match-if-any within the family: a sibling rail with a different address stays encrypted.
             if (expectedOnChainAddress != null && !addressesMatch(decrypted, expectedOnChainAddress)) {
-                throw TamperedException()
+                continue
             }
             if (expectedOnChainAddress != null) onChainBound = true
             destination.value = decrypted
             destination.isEncrypted = false
             destination.id?.let { keys.putIfAbsent(it, encryptionKey) }
             tryDecryptMetadata(payment, destination, encryptionKey)
+        }
+        // Tampered only when a family rail decrypted and none matched the scanned address.
+        if (expectedOnChainAddress != null && !onChainBound && decryptedExpectedRail) {
+            throw TamperedException()
         }
         return onChainBound
     }
@@ -220,7 +249,7 @@ class BrantaService internal constructor(
             if (destination.id == null) destination.id = UUID.randomUUID().toString()
             val detected = destination.type ?: detectDestinationType(destination.value)
             if (destination.type == null && detected != null) destination.type = detected
-            if (detected == DestinationType.BitcoinAddress) {
+            if (detected != null && DestinationType.isSecretKeyAddress(detected)) {
                 destination.value = AesEncryption.encrypt(
                     destination.value,
                     secret,

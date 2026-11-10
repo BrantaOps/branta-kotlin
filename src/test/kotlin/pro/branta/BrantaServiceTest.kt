@@ -345,4 +345,289 @@ class BrantaServiceTest {
         val result = service(client).verify("bitcoin:$address?branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret")
         assertEquals("Invoice", result.payments.single().description)
     }
+
+    private fun polUri(recipient: String, encrypted: String, secret: String): String =
+        "pol:$recipient?value=50&user=send&currency=USD&branta_id=$encrypted&branta_secret=$secret"
+
+    @Test
+    fun `pol usdt match ignores amount query and sets matchedDestinations`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = cipher, type = DestinationType.UsdtPolygon, id = "zk-usdt", isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr, cipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        assertEquals(DestinationType.UsdtPolygon, result.payments.single().destinations.single().type)
+        assertEquals(usdtPolygonAddr, result.payments.single().destinations.single().value)
+        assertEquals(1, result.matchedDestinations.size)
+        assertEquals(DestinationType.UsdtPolygon, result.matchedDestinations.single().type)
+    }
+
+    @Test
+    fun `pol usdt case-insensitive match`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr.lowercase(), cipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+    }
+
+    @Test
+    fun `pol usdt swapped is tampered`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
+        )
+        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, cipher, secret)).status)
+    }
+
+    @Test
+    fun `bare usdt address is unknown`() = runTest {
+        val client = FakeClient()
+        val result = service(client).verify(usdtPolygonAddr)
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `pol without branta params is unknown`() = runTest {
+        val client = FakeClient()
+        val result = service(client).verify("pol:$usdtPolygonAddr?value=50")
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `pol ignores sibling bitcoin rail`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val btcCipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        val dests = result.payments.single().destinations
+        assertTrue(dests[0].isEncrypted)
+        assertEquals(DestinationType.BitcoinAddress, dests[0].type)
+        assertFalse(dests[1].isEncrypted)
+        assertEquals(usdtPolygonAddr, dests[1].value)
+    }
+
+    @Test
+    fun `bitcoin ignores sibling usdt rail`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val btcCipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify("bitcoin:$address?branta_id=${encodeUriComponent(btcCipher)}&branta_secret=$secret")
+        assertEquals(VerifyStatus.Match, result.status)
+        val dests = result.payments.single().destinations
+        assertFalse(dests[0].isEncrypted)
+        assertEquals(address, dests[0].value)
+        assertTrue(dests[1].isEncrypted)
+        assertEquals(DestinationType.UsdtPolygon, dests[1].type)
+    }
+
+    @Test
+    fun `pol swapped still tampered with sibling bitcoin`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val btcCipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
+                )
+            )
+        )
+        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, usdtCipher, secret)).status)
+    }
+
+    @Test
+    fun `pol match-if-any dual usdt leaves sibling encrypted`() = runTest {
+        val matchCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val siblingCipher = AesEncryption.encrypt(siblingUsdtAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = siblingCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
+                    Destination(value = matchCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr, matchCipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        val dests = result.payments.single().destinations
+        assertTrue(dests[0].isEncrypted)
+        assertEquals(siblingCipher, dests[0].value)
+        assertFalse(dests[1].isEncrypted)
+        assertEquals(usdtPolygonAddr, dests[1].value)
+    }
+
+    @Test
+    fun `pol swapped tampered when no polygon family rail matches`() = runTest {
+        val matchCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val siblingCipher = AesEncryption.encrypt(siblingUsdtAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = siblingCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
+                    Destination(value = matchCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
+                )
+            )
+        )
+        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, matchCipher, secret)).status)
+    }
+
+    @Test
+    fun `pol usdc match`() = runTest {
+        val cipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdcPolygon, isEncrypted = true)))
+        )
+        val match = service(client).verify(polUri(usdcPolygonAddr, cipher, secret))
+        assertEquals(VerifyStatus.Match, match.status)
+        assertEquals(DestinationType.UsdcPolygon, match.matchedDestinations.single().type)
+    }
+
+    @Test
+    fun `pol usdc swapped is tampered`() = runTest {
+        val cipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdcPolygon, isEncrypted = true)))
+        )
+        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, cipher, secret)).status)
+    }
+
+    @Test
+    fun `pol binds usdt and leaves sibling usdc encrypted`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val usdcCipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
+                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        val dests = result.payments.single().destinations
+        assertFalse(dests[0].isEncrypted)
+        assertEquals(DestinationType.UsdtPolygon, dests[0].type)
+        assertTrue(dests[1].isEncrypted)
+        assertEquals(DestinationType.UsdcPolygon, dests[1].type)
+    }
+
+    @Test
+    fun `pol binds usdc and leaves sibling usdt encrypted`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val usdcCipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
+                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdcPolygonAddr, usdcCipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        val dests = result.payments.single().destinations
+        assertTrue(dests[0].isEncrypted)
+        assertEquals(DestinationType.UsdtPolygon, dests[0].type)
+        assertFalse(dests[1].isEncrypted)
+        assertEquals(DestinationType.UsdcPolygon, dests[1].type)
+    }
+
+    @Test
+    fun `pol wrong secret is unknown`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
+        )
+        assertEquals(VerifyStatus.Unknown, service(client).verify(polUri(usdtPolygonAddr, cipher, "wrong-secret")).status)
+    }
+
+    @Test
+    fun `same address usdt and usdc both match`() = runTest {
+        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val usdcCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(
+                destinations = mutableListOf(
+                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
+                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
+                )
+            )
+        )
+        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        assertEquals(2, result.matchedDestinations.size)
+    }
+
+    @Test
+    fun `addPayment encrypts usdt and usdc polygon`() = runTest {
+        val client = FakeClient()
+        val caller = PaymentBuilder().addDestination(usdtPolygonAddr, DestinationType.UsdtPolygon).build()
+        val usdt = service(client, FixedSecret("polygon-secret")).addPayment(caller)
+        assertEquals(usdtPolygonAddr, caller.destinations.single().value)
+        assertTrue(client.posted!!.destinations.single().value != usdtPolygonAddr)
+        assertEquals(DestinationType.UsdtPolygon, client.posted!!.destinations.single().type)
+        assertEquals("polygon-secret", usdt.secret)
+
+        val usdcClient = FakeClient()
+        service(usdcClient, FixedSecret("polygon-secret")).addPayment(
+            PaymentBuilder().addDestination(usdcPolygonAddr, DestinationType.UsdcPolygon).build()
+        )
+        assertEquals(DestinationType.UsdcPolygon, usdcClient.posted!!.destinations.single().type)
+        assertTrue(usdcClient.posted!!.destinations.single().value != usdcPolygonAddr)
+    }
+
+    @Test
+    fun `addPayment bare 0x without type is unsupported`() = runTest {
+        val client = FakeClient()
+        assertFailsWith<BrantaPaymentException> {
+            service(client).addPayment(PaymentBuilder().addDestination(usdtPolygonAddr).build())
+        }
+        assertNull(client.posted)
+    }
+
+    companion object {
+        private const val usdtPolygonAddr = "0x278297528c32eCa01295B0d2135984d3442ec963"
+        private const val usdcPolygonAddr = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+        private const val siblingUsdtAddr = "0x2222222222222222222222222222222222222222"
+        private const val swappedPolygonAddr = "0x1111111111111111111111111111111111111111"
+    }
 }

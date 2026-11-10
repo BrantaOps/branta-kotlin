@@ -11,7 +11,7 @@ Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and 
 
 ```kotlin
 dependencies {
-    implementation("pro.branta:branta:4.0.0")
+    implementation("pro.branta:branta:4.2.0")
 }
 ```
 
@@ -27,6 +27,8 @@ val result = service.verify(input)
 when (result.status) {
     VerifyStatus.Match -> {
         // Show the card for result.payments.first(). Link it to result.verifyUrl.
+        // For pol: rails, token is on result.matchedDestinations[i].type
+        // (usdt_polygon / usdc_polygon) — do not infer it from pol:.
     }
     VerifyStatus.Unknown -> {
         // Not in Branta — show nothing.
@@ -40,7 +42,7 @@ when (result.status) {
 }
 ```
 
-On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. bolt11, Ark, and silent payments resolve from the value. A bare address is `unknown`.
+On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Polygon EVM rails (`usdt_polygon`, `usdc_polygon`) need a `pol:` URI with the same params — token is on `matchedDestinations[].type`, not the `pol:` scheme. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
 
 A 404 is `unknown`. 5xx, 429, or no network is `incomplete`. `verifyUrl` is always returned.
 
@@ -55,14 +57,17 @@ val service = BrantaService(
 val payment = PaymentBuilder()
     .setDescription("Invoice #12345")
     .addDestination("bc1q…", DestinationType.BitcoinAddress)
+    // Polygon: pass UsdtPolygon / UsdcPolygon explicitly — bare 0x is not auto-detected.
+    // .addDestination("0x…", DestinationType.UsdtPolygon)
     .setTtl(600) // seconds. Omit to use the server default. 0 posts as 30 seconds.
     .build()
 
 val result = service.addPayment(payment)
-// Store result.secret with the invoice. Put branta_id and branta_secret on the QR.
+// Store result.secret with the invoice. Put branta_id and branta_secret on the QR
+// (bitcoin:… or pol:…).
 ```
 
-Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata.
+Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, `UsdtPolygon`, and `UsdcPolygon`.
 
 Shared-key parent platforms tag the child on the builder:
 

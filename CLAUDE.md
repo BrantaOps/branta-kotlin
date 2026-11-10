@@ -9,13 +9,14 @@ If you are implementing this SDK in a consumer project, product rules (send vs r
 ./gradlew build
 ```
 
-Live example-QR lookups run only when `BRANTA_RUN_INTEGRATION=1`.
+Live example-QR lookups, polygon round-trips, and staging combo POSTs run only when `BRANTA_RUN_INTEGRATION=1` (API key required for write tests).
 
 ## Layout
 
 Public API is `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyResult`, and the payment models in `pro.branta`.
 
 - `BrantaService` orchestrates encrypt/decrypt around HTTP. `HttpBrantaClient` is internal.
-- `verify` is the only lookup. A raw on-chain address is `unknown` and does not GET. `addPayment` encrypts a copy.
-- `DestinationType` is only what `addPayment` accepts: `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`.
+- `verify` is the only lookup. A raw on-chain address (including bare `0x`) is `unknown` and does not GET. `addPayment` encrypts a copy.
+- `DestinationType` is only what `addPayment` accepts: `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`, `usdt_polygon`, `usdc_polygon`. Pass Polygon types explicitly.
+- `pol:` verify is match-if-any within the Polygon EVM family; token is on `matchedDestinations[].type`.
 - `tampered` and `incomplete` are statuses. Do not throw them. Logo-domain mismatches still throw `BrantaPaymentException`.
