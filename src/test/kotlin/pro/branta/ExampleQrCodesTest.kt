@@ -34,7 +34,12 @@ class ExampleQrCodesTest {
     @Test fun `staging ark returns a match`() = expect(BrantaEnvironment.Staging, STAGING_ARK, VerifyStatus.Match)
     @Test fun `staging silent payment returns a match`() = expect(BrantaEnvironment.Staging, STAGING_SILENT, VerifyStatus.Match)
     @Test fun `staging branta unified returns a match`() = expect(BrantaEnvironment.Staging, STAGING_UNIFIED, VerifyStatus.Match)
+    @Test fun `staging testnet returns a match`() = expect(BrantaEnvironment.Staging, STAGING_TESTNET, VerifyStatus.Match)
+    @Test fun `staging usdt polygon returns a match`() = expect(BrantaEnvironment.Staging, STAGING_USDT_POLYGON, VerifyStatus.Match)
+    @Test fun `staging usdc polygon returns a match`() = expect(BrantaEnvironment.Staging, STAGING_USDC_POLYGON, VerifyStatus.Match)
+    @Test fun `staging bare 0x returns unknown`() = expect(BrantaEnvironment.Staging, STAGING_BARE_OX, VerifyStatus.Unknown)
     @Test fun `staging not found returns unknown`() = expect(BrantaEnvironment.Staging, NOT_FOUND, VerifyStatus.Unknown)
+    @Test fun `staging tampered returns tampered`() = expect(BrantaEnvironment.Staging, STAGING_TAMPERED, VerifyStatus.Tampered)
 
     private fun expect(environment: BrantaEnvironment, input: String, status: VerifyStatus) = runBlocking {
         assertEquals(status, service(environment).verify(input).status)
@@ -59,5 +64,10 @@ class ExampleQrCodesTest {
         private const val STAGING_ARK = "ark1qztwuhx7vpytv4dcfeqjsepx3kxstnarelmry2smrfdgt2dv87fas7gtqkk"
         private const val STAGING_SILENT = "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv"
         private const val STAGING_UNIFIED = "bitcoin:bc1q6745z6cy3u0k9nprurh3x804c4r7u3u8vxca2n?lightning=lnbc10u1p4w23tzpp5s6jc8gvun27un7g7q9kmh2vak78r83766heesd9fepa5s56hrpsqdqhgfexzmn5vys8xarpva5kuecxq97zvuqsp5gt4k9wwdgf85g066a05zrnlkh3jc2ng3mh9mw6yw7z03l4kmqzys9qypsqqcqpf7pk6xjfksy8sqhv24es2qgtp0e88wvt2gdv2zceealhjwh0memhzktgnfhdvzc9a6kt74w5jf5c8v9t20k38snawrgngr0sjw9a58fqqn9lwtq&branta_id=NxkrlFgIvGg6f8YZmFAf8qTUza8nXfn%2Bb9H3W7czFAo5Lp4cSpgRSmJgx7P9vaOYu7lkP6XXKvTshQfkXxxRrxJ%2BE7zdpA%3D%3D&branta_secret=6acf2637-511a-4b89-ba2c-f5914d7e669c"
+        private const val STAGING_TESTNET = "bitcoin:tb1qshra2mlujc9wfscvn4d8aqpyqgxzl55853xg7s?branta_id=fa05KT1L6zIAYx2sHcImF3R5RilwMAXAvx%2F5u2YVBIdvnp30drV7bszFzvpdoA%2FeluN0PXbsxcsD38twzw4%2BL8MFoHxkGQ%3D%3D&branta_secret=0621110e-1ad6-483d-80b6-78697c9f6896"
+        private const val STAGING_USDT_POLYGON = "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&user=send&currency=USD&branta_id=4WYE9J4TjNitdX7AL%2Fw7frpYdKGwSKHCS5zpFXl%2FlQGwpsQi4%2Fgv5MxgujPFzYMbIKqg2rtyYGpzJCllEA6Qudbi7lLkiA%3D%3D&branta_secret=c0fab1ee-1526-4efa-b991-9ee138a44cd2"
+        private const val STAGING_USDC_POLYGON = "pol:0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B?value=50&user=send&currency=USD&branta_id=8rnGGWZcg%2Fg3He1OK6yZ6OLOEyusldwIDaoPImRzWjoUGguyXKotuF8ZlGbCZN9TRqx3PdXjvHDdwffdVvIZxmZ00xJvxA%3D%3D&branta_secret=0515039f-2c31-4467-b62a-4e919079a44e"
+        private const val STAGING_BARE_OX = "0x278297528c32eCa01295B0d2135984d3442ec963"
+        private const val STAGING_TAMPERED = "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?branta_id=6SpYCe23r79x0t8rNvmjWqhrg8hen4xz%2FYSXhNJ9HLSYrTRPnm%2BSwAuf6NOKobnwE%2B3MQBNkyTnCtIWpKKX2E9ZUWVedig%3D%3D&branta_secret=05eb145d-b5cb-452a-9256-0bdfd9a15ffa"
     }
 }

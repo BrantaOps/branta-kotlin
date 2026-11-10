@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "pro.branta"
-version = "4.0.0"
+version = "4.2.0"
 
 kotlin {
     jvmToolchain(11)
@@ -36,6 +36,8 @@ tasks.test {
     if (System.getenv("BRANTA_RUN_INTEGRATION") != "1") {
         filter {
             excludeTestsMatching("*.ExampleQrCodesTest")
+            excludeTestsMatching("*.PolygonRoundTripTest")
+            excludeTestsMatching("*.LiveStagingCombosTest")
         }
     }
 }

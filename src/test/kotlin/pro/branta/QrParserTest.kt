@@ -40,4 +40,24 @@ class QrParserTest {
     fun `encodeUriComponent matches encodeURIComponent`() {
         assertEquals("a%2Bb%2Fc%3D%20d!*'()~", encodeUriComponent("a+b/c= d!*'()~"))
     }
+
+    @Test
+    fun `pol uri is secret key without a stamped token type`() {
+        val parser = QrParser(
+            "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&branta_id=enc&branta_secret=sec"
+        )
+        assertEquals("0x278297528c32eCa01295B0d2135984d3442ec963", parser.destination)
+        assertNull(parser.destinationType)
+        assertTrue(parser.destinations.single().secretKey)
+        assertEquals("enc", parser.onChainEncryptionText)
+        assertEquals("sec", parser.onChainEncryptionSecret)
+        assertEquals(DestinationType.PolygonEvm, parser.expectedSecretKeyTypes)
+    }
+
+    @Test
+    fun `bitcoin uri expects the bitcoin secret-key family`() {
+        val parser = QrParser("bitcoin:bc1qmerchant?branta_id=enc&branta_secret=sec")
+        assertTrue(parser.destinations.first().secretKey)
+        assertEquals(listOf(DestinationType.BitcoinAddress), parser.expectedSecretKeyTypes)
+    }
 }

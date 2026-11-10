@@ -3,7 +3,13 @@ package pro.branta
 import pro.branta.enums.DestinationType
 import java.net.URI
 
-internal data class QrDestination(val value: String, val type: DestinationType?)
+internal data class QrDestination(
+    val value: String,
+    /** Known rail type when the scheme or payload names one (e.g. bitcoin). Not set for `pol:`. */
+    val type: DestinationType? = null,
+    /** Visible address that participates in the secret-key swap check. */
+    val secretKey: Boolean = false
+)
 
 internal fun normalizeQrText(qrText: String): String {
     val trimmed = qrText.trim { it.code <= 0x20 }
@@ -58,6 +64,8 @@ internal class QrParser(qrText: String) {
     val destinations: MutableList<QrDestination> = mutableListOf()
     var onChainEncryptionText: String? = null
     var onChainEncryptionSecret: String? = null
+    /** Destination types verify may bind for this QR's scheme (match-if-any). */
+    var expectedSecretKeyTypes: List<DestinationType> = emptyList()
     var hasUnverifiableInstruction: Boolean = false
 
     val destination: String? get() = destinations.firstOrNull()?.value
@@ -69,11 +77,26 @@ internal class QrParser(qrText: String) {
         val scheme = uri?.scheme?.lowercase()
         if (uri == null || scheme == null) {
             destinations.add(QrDestination(text, detectDestinationType(text)))
+        } else if (scheme == "pol") {
+            val dest = destinationFromText(text)
+            if (dest != null) {
+                destinations.add(QrDestination(dest, type = null, secretKey = true))
+                expectedSecretKeyTypes = DestinationType.PolygonEvm
+            }
+            val queryParams = parseQueryString(queryFromText(text))
+            onChainEncryptionText = queryParams["branta_id"]
+            onChainEncryptionSecret = queryParams["branta_secret"]
         } else if (scheme == "bitcoin" || scheme == "lightning") {
             val dest = destinationFromText(text)
             if (dest != null) {
                 val destType = destinationTypeOf(text)
-                destinations.add(QrDestination(dest, destType))
+                destinations.add(
+                    QrDestination(
+                        dest,
+                        destType,
+                        secretKey = destType == DestinationType.BitcoinAddress
+                    )
+                )
                 if (dest.isNotEmpty() &&
                     destType != DestinationType.BitcoinAddress &&
                     dest.getDerivedKeyType() == null
@@ -92,7 +115,7 @@ internal class QrParser(qrText: String) {
                     hasUnverifiableInstruction = true
                     return
                 }
-                destinations.add(QrDestination(value, type))
+                destinations.add(QrDestination(value, type, secretKey = onChain))
             }
 
             addBindable(queryParams["lightning"], detectDestinationType(queryParams["lightning"] ?: ""), false)
@@ -104,6 +127,10 @@ internal class QrParser(qrText: String) {
             if (queryParams.containsKey("bolt12")) hasUnverifiableInstruction = true
             if (queryParams.containsKey("lno")) hasUnverifiableInstruction = true
             if (queryParams.containsKey("pay")) hasUnverifiableInstruction = true
+
+            if (destinations.any { it.secretKey }) {
+                expectedSecretKeyTypes = listOf(DestinationType.BitcoinAddress)
+            }
         } else {
             destinations.add(QrDestination(text, null))
         }
