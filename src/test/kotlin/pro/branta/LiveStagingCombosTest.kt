@@ -159,6 +159,7 @@ class LiveStagingCombosTest {
             mustStatus(usdt, VerifyStatus.Unknown)
             mustStatus("pol:$usdt?value=50&currency=USD", VerifyStatus.Unknown)
         }
+        Unit
     }
 
     companion object {
