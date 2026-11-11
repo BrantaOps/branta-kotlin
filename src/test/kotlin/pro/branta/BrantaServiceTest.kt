@@ -380,6 +380,18 @@ class BrantaServiceTest {
     }
 
     @Test
+    fun `pol usdt 0x prefix case-insensitive match`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
+        )
+        val mixed = "0X" + usdtPolygonAddr.substring(2)
+        val result = service(client).verify(polUri(mixed, cipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+    }
+
+    @Test
     fun `pol usdt swapped is tampered`() = runTest {
         val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
         val client = FakeClient()
