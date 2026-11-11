@@ -21,7 +21,6 @@ class DestinationTypeTest {
         assertEquals("usdc_bsc", DestinationType.UsdcBsc.wire)
         assertEquals("usdt_tron", DestinationType.UsdtTron.wire)
         assertEquals("usdt_ton", DestinationType.UsdtTon.wire)
-        assertEquals("usdc_ton", DestinationType.UsdcTon.wire)
         assertEquals("usdt_solana", DestinationType.UsdtSolana.wire)
         assertEquals("usdc_solana", DestinationType.UsdcSolana.wire)
     }
@@ -32,7 +31,7 @@ class DestinationTypeTest {
         assertEquals(listOf(DestinationType.UsdtEthereum, DestinationType.UsdcEthereum), DestinationType.EthereumEvm)
         assertEquals(listOf(DestinationType.UsdtBsc, DestinationType.UsdcBsc), DestinationType.BscEvm)
         assertEquals(listOf(DestinationType.UsdtTron), DestinationType.Tron)
-        assertEquals(listOf(DestinationType.UsdtTon, DestinationType.UsdcTon), DestinationType.Ton)
+        assertEquals(listOf(DestinationType.UsdtTon), DestinationType.Ton)
         assertEquals(listOf(DestinationType.UsdtSolana, DestinationType.UsdcSolana), DestinationType.Solana)
         assertTrue(DestinationType.isSecretKeyAddress(DestinationType.BitcoinAddress))
         DestinationType.SecretKeyUriFamilies.values.flatten().forEach {

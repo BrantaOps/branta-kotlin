@@ -13,7 +13,6 @@ enum class DestinationType(val wire: String) {
     UsdcBsc("usdc_bsc"),
     UsdtTron("usdt_tron"),
     UsdtTon("usdt_ton"),
-    UsdcTon("usdc_ton"),
     UsdtSolana("usdt_solana"),
     UsdcSolana("usdc_solana");
 
@@ -27,7 +26,7 @@ enum class DestinationType(val wire: String) {
 
         val Tron: List<DestinationType> = listOf(UsdtTron)
 
-        val Ton: List<DestinationType> = listOf(UsdtTon, UsdcTon)
+        val Ton: List<DestinationType> = listOf(UsdtTon)
 
         val Solana: List<DestinationType> = listOf(UsdtSolana, UsdcSolana)
 
