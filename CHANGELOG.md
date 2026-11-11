@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Multi-rail stablecoin destination types `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdcTon`, `UsdtSolana`, `UsdcSolana`. `addPayment` encrypts them with a random secret. `verify` parses `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` URIs with `branta_id` / `branta_secret` (`DestinationType.SecretKeyUriFamilies`), match-if-any within the scheme's family. A bare address is `unknown`.
+
+## [Unreleased]
+
+### Added
+- Multi-rail stablecoin destination types `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdcTon`, `UsdtSolana`, `UsdcSolana`. `addPayment` encrypts them with a random secret. `verify` parses `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` URIs with `branta_id` / `branta_secret` (`DestinationType.SecretKeyUriFamilies`), match-if-any within the scheme's family. A bare address is `unknown`.
+
 ## [4.2.0] - 2026-11-10
 
 ### Added

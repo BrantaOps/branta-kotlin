@@ -627,6 +627,63 @@ class BrantaServiceTest {
         assertTrue(usdcClient.posted!!.destinations.single().value != usdcPolygonAddr)
     }
 
+    private fun chainUri(scheme: String, recipient: String, encrypted: String, secret: String): String =
+        "$scheme:$recipient?value=50&branta_id=${encodeUriComponent(encrypted)}&branta_secret=${encodeUriComponent(secret)}"
+
+    private suspend fun assertChainMatch(scheme: String, address: String, type: DestinationType) {
+        val cipher = AesEncryption.encrypt(address, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = type, id = "zk", isEncrypted = true)))
+        )
+        val result = service(client).verify(chainUri(scheme, address, cipher, secret))
+        assertEquals(VerifyStatus.Match, result.status)
+        assertEquals(listOf(cipher), client.lookups)
+        assertEquals(type, result.matchedDestinations.single().type)
+        assertEquals(address, result.matchedDestinations.single().value)
+    }
+
+    @Test
+    fun `eth usdt match`() = runTest { assertChainMatch("eth", usdtEthereumAddr, DestinationType.UsdtEthereum) }
+
+    @Test
+    fun `tron usdt match`() = runTest { assertChainMatch("tron", usdtTronAddr, DestinationType.UsdtTron) }
+
+    @Test
+    fun `sol usdc match`() = runTest { assertChainMatch("sol", usdcSolanaAddr, DestinationType.UsdcSolana) }
+
+    @Test
+    fun `tron swapped is tampered`() = runTest {
+        val cipher = AesEncryption.encrypt(usdtTronAddr, secret)
+        val client = FakeClient()
+        client.payments = listOf(
+            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtTron, isEncrypted = true)))
+        )
+        val swappedTron = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        assertEquals(VerifyStatus.Tampered, service(client).verify(chainUri("tron", swappedTron, cipher, secret)).status)
+    }
+
+    @Test
+    fun `bare tron and solana addresses are unknown`() = runTest {
+        val client = FakeClient()
+        assertEquals(VerifyStatus.Unknown, service(client).verify(usdtTronAddr).status)
+        assertEquals(VerifyStatus.Unknown, service(client).verify(usdcSolanaAddr).status)
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `addPayment encrypts usdt tron with the secret`() = runTest {
+        val client = FakeClient()
+        val caller = PaymentBuilder().addDestination(usdtTronAddr, DestinationType.UsdtTron).build()
+        val result = service(client, FixedSecret("tron-secret")).addPayment(caller)
+        assertEquals(usdtTronAddr, caller.destinations.single().value)
+        val posted = client.posted!!.destinations.single()
+        assertTrue(posted.value != usdtTronAddr)
+        assertEquals(DestinationType.UsdtTron, posted.type)
+        assertEquals("tron-secret", result.secret)
+        assertEquals(usdtTronAddr, AesEncryption.decrypt(posted.value, "tron-secret"))
+    }
+
     @Test
     fun `addPayment bare 0x without type is unsupported`() = runTest {
         val client = FakeClient()
@@ -639,6 +696,9 @@ class BrantaServiceTest {
     companion object {
         private const val usdtPolygonAddr = "0x278297528c32eCa01295B0d2135984d3442ec963"
         private const val usdcPolygonAddr = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+        private const val usdtEthereumAddr = "0xBF5550253939187432Ef4dccE8089765d3DCb47f"
+        private const val usdtTronAddr = "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"
+        private const val usdcSolanaAddr = "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf"
         private const val siblingUsdtAddr = "0x2222222222222222222222222222222222222222"
         private const val swappedPolygonAddr = "0x1111111111111111111111111111111111111111"
     }

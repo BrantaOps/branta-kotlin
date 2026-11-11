@@ -42,6 +42,26 @@ class QrParserTest {
     }
 
     @Test
+    fun `chain uri schemes map to their destination family`() {
+        val cases = mapOf(
+            "eth" to DestinationType.EthereumEvm,
+            "bsc" to DestinationType.BscEvm,
+            "tron" to DestinationType.Tron,
+            "ton" to DestinationType.Ton,
+            "sol" to DestinationType.Solana
+        )
+        for ((scheme, family) in cases) {
+            val parser = QrParser("$scheme:someaddress?value=1&branta_id=enc&branta_secret=sec")
+            assertEquals("someaddress", parser.destination, scheme)
+            assertNull(parser.destinationType, scheme)
+            assertTrue(parser.destinations.single().secretKey, scheme)
+            assertEquals(family, parser.expectedSecretKeyTypes, scheme)
+            assertEquals("enc", parser.onChainEncryptionText, scheme)
+            assertEquals("sec", parser.onChainEncryptionSecret, scheme)
+        }
+    }
+
+    @Test
     fun `pol uri is secret key without a stamped token type`() {
         val parser = QrParser(
             "pol:0x278297528c32eCa01295B0d2135984d3442ec963?value=50&branta_id=enc&branta_secret=sec"

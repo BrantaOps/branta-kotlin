@@ -15,6 +15,32 @@ class DestinationTypeTest {
         assertEquals("silent_payment", DestinationType.SilentPayment.wire)
         assertEquals("usdt_polygon", DestinationType.UsdtPolygon.wire)
         assertEquals("usdc_polygon", DestinationType.UsdcPolygon.wire)
+        assertEquals("usdt_ethereum", DestinationType.UsdtEthereum.wire)
+        assertEquals("usdc_ethereum", DestinationType.UsdcEthereum.wire)
+        assertEquals("usdt_bsc", DestinationType.UsdtBsc.wire)
+        assertEquals("usdc_bsc", DestinationType.UsdcBsc.wire)
+        assertEquals("usdt_tron", DestinationType.UsdtTron.wire)
+        assertEquals("usdt_ton", DestinationType.UsdtTon.wire)
+        assertEquals("usdc_ton", DestinationType.UsdcTon.wire)
+        assertEquals("usdt_solana", DestinationType.UsdtSolana.wire)
+        assertEquals("usdc_solana", DestinationType.UsdcSolana.wire)
+    }
+
+    @Test
+    fun `uri scheme families and secret key helper`() {
+        assertEquals(setOf("pol", "eth", "bsc", "tron", "ton", "sol"), DestinationType.SecretKeyUriFamilies.keys)
+        assertEquals(listOf(DestinationType.UsdtEthereum, DestinationType.UsdcEthereum), DestinationType.EthereumEvm)
+        assertEquals(listOf(DestinationType.UsdtBsc, DestinationType.UsdcBsc), DestinationType.BscEvm)
+        assertEquals(listOf(DestinationType.UsdtTron), DestinationType.Tron)
+        assertEquals(listOf(DestinationType.UsdtTon, DestinationType.UsdcTon), DestinationType.Ton)
+        assertEquals(listOf(DestinationType.UsdtSolana, DestinationType.UsdcSolana), DestinationType.Solana)
+        assertTrue(DestinationType.isSecretKeyAddress(DestinationType.BitcoinAddress))
+        DestinationType.SecretKeyUriFamilies.values.flatten().forEach {
+            assertTrue(DestinationType.isSecretKeyAddress(it), it.wire)
+        }
+        assertFalse(DestinationType.isSecretKeyAddress(DestinationType.ArkAddress))
+        assertFalse(DestinationType.isSecretKeyAddress(DestinationType.SilentPayment))
+        assertEquals(DestinationType.UsdtTron, DestinationType.fromWire("usdt_tron"))
     }
 
     @Test
