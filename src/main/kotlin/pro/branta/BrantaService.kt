@@ -37,7 +37,9 @@ private val bech32Regex = Regex("^(bc|tb|bcrt)1", RegexOption.IGNORE_CASE)
 private fun addressesMatch(a: String, b: String): Boolean {
     fun isBech32(value: String) = bech32Regex.containsMatchIn(value)
     if (isBech32(a) && isBech32(b)) return a.equals(b, ignoreCase = true)
-    if (a.startsWith("0x") && b.startsWith("0x")) return a.equals(b, ignoreCase = true)
+    if (a.startsWith("0x", ignoreCase = true) && b.startsWith("0x", ignoreCase = true)) {
+        return a.equals(b, ignoreCase = true)
+    }
     return a == b
 }
 
