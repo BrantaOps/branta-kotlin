@@ -18,20 +18,20 @@ enum class DestinationType(val wire: String) {
 
     companion object {
         /** Polygon EVM secret-key rails. A `pol:` URI maps to this family for verify (match-if-any). */
-        val PolygonEvm: List<DestinationType> = listOf(UsdtPolygon, UsdcPolygon)
+        internal val PolygonEvm: List<DestinationType> = listOf(UsdtPolygon, UsdcPolygon)
 
-        val EthereumEvm: List<DestinationType> = listOf(UsdtEthereum, UsdcEthereum)
+        internal val EthereumEvm: List<DestinationType> = listOf(UsdtEthereum, UsdcEthereum)
 
-        val BscEvm: List<DestinationType> = listOf(UsdtBsc, UsdcBsc)
+        internal val BscEvm: List<DestinationType> = listOf(UsdtBsc, UsdcBsc)
 
-        val Tron: List<DestinationType> = listOf(UsdtTron)
+        internal val Tron: List<DestinationType> = listOf(UsdtTron)
 
-        val Ton: List<DestinationType> = listOf(UsdtTon)
+        internal val Ton: List<DestinationType> = listOf(UsdtTon)
 
-        val Solana: List<DestinationType> = listOf(UsdtSolana, UsdcSolana)
+        internal val Solana: List<DestinationType> = listOf(UsdtSolana, UsdcSolana)
 
         /** URI scheme -> secret-key destination family for verify (match-if-any). */
-        val SecretKeyUriFamilies: Map<String, List<DestinationType>> = mapOf(
+        internal val SecretKeyUriFamilies: Map<String, List<DestinationType>> = mapOf(
             "pol" to PolygonEvm,
             "eth" to EthereumEvm,
             "bsc" to BscEvm,
@@ -42,10 +42,8 @@ enum class DestinationType(val wire: String) {
 
         fun fromWire(value: String?): DestinationType? = entries.firstOrNull { it.wire == value }
 
-        fun isPolygonEvm(type: DestinationType): Boolean = type in PolygonEvm
-
         /** Address rails encrypted with a random branta_secret (not a derived key). */
-        fun isSecretKeyAddress(type: DestinationType): Boolean =
+        internal fun isSecretKeyAddress(type: DestinationType): Boolean =
             type == BitcoinAddress || SecretKeyUriFamilies.values.any { type in it }
     }
 }

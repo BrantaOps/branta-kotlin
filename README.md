@@ -11,7 +11,7 @@ Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and 
 
 ```kotlin
 dependencies {
-    implementation("pro.branta:branta:4.2.0")
+    implementation("pro.branta:branta:4.3.0")
 }
 ```
 
@@ -27,8 +27,8 @@ val result = service.verify(input)
 when (result.status) {
     VerifyStatus.Match -> {
         // Show the card for result.payments.first(). Link it to result.verifyUrl.
-        // For pol: rails, token is on result.matchedDestinations[i].type
-        // (usdt_polygon / usdc_polygon) — do not infer it from pol:.
+        // For chain URIs, token is on result.matchedDestinations[i].type
+        // (e.g. UsdtEthereum) — do not infer it from the scheme.
     }
     VerifyStatus.Unknown -> {
         // Not in Branta — show nothing.
@@ -37,14 +37,15 @@ when (result.status) {
         // Destination was altered. Warn. Do not show a verified card.
     }
     VerifyStatus.Incomplete -> {
-        // 5xx, 429, or unreachable. Tell the user. Do not treat as unknown.
+        // 5xx, 429, unreachable, timeout, or malformed lookup. Tell the user.
+        // Do not treat as unknown.
     }
 }
 ```
 
 On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Stablecoin rails need a chain URI with the same params — `pol:` (`usdt_polygon`, `usdc_polygon`), `eth:` (`usdt_ethereum`, `usdc_ethereum`), `bsc:` (`usdt_bsc`, `usdc_bsc`), `tron:` (`usdt_tron`), `ton:` (`usdt_ton`), `sol:` (`usdt_solana`, `usdc_solana`). Token is on `matchedDestinations[].type`, not the URI scheme; verify is match-if-any within the scheme's family. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
 
-A 404 is `unknown`. 5xx, 429, or no network is `incomplete`. `verifyUrl` is always returned.
+A 404 is `unknown`. 5xx, 429, no network, a timeout, or a malformed GET body is `incomplete`. `verifyUrl` is always returned. A logo on the wrong origin throws.
 
 ## Receive
 
@@ -57,14 +58,14 @@ val service = BrantaService(
 val payment = PaymentBuilder()
     .setDescription("Invoice #12345")
     .addDestination("bc1q…", DestinationType.BitcoinAddress)
-    // Polygon: pass UsdtPolygon / UsdcPolygon explicitly — bare 0x is not auto-detected.
-    // .addDestination("0x…", DestinationType.UsdtPolygon)
+    // Stablecoin: pass the type explicitly — bare addresses are not auto-detected.
+    // .addDestination("0x…", DestinationType.UsdtEthereum)
     .setTtl(600) // seconds. Omit to use the server default. 0 posts as 30 seconds.
     .build()
 
 val result = service.addPayment(payment)
 // Store result.secret with the invoice. Put branta_id and branta_secret on the QR
-// (bitcoin:… or pol:…).
+// (bitcoin:…, pol:…, eth:…, …).
 ```
 
 Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, `UsdtPolygon`, `UsdcPolygon`, `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana`.
@@ -79,7 +80,7 @@ PaymentBuilder()
     .build()
 ```
 
-Per-client keys are deprecated. A per-call `BrantaApiOptions(apiKey = "<child-api-key>")` still selects the child key.
+`hmacSecret` is deprecated. Prefer a shared `apiKey` with `setChildPlatform`. A per-call `BrantaApiOptions(apiKey = "<child-api-key>")` still selects the child key.
 
 ## Publishing
 

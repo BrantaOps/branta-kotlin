@@ -24,9 +24,16 @@ internal interface BrantaClient {
     suspend fun isApiKeyValid(options: BrantaApiOptions? = null): Boolean
 }
 
+internal fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
+
 internal class HttpBrantaClient(
     private val defaultOptions: BrantaApiOptions? = null,
-    private val httpClient: OkHttpClient = OkHttpClient()
+    private val httpClient: OkHttpClient = defaultHttpClient()
 ) : BrantaClient {
 
     override suspend fun getPayments(destinationValue: String, options: BrantaApiOptions?): List<Payment> {
@@ -45,9 +52,20 @@ internal class HttpBrantaClient(
         response.use {
             if (it.code == 404) return emptyList()
             if (!it.isSuccessful) throw IncompleteException(statusText(it.code))
-            val body = it.body?.string().orEmpty()
+            val body = try {
+                it.body?.string().orEmpty()
+            } catch (e: IOException) {
+                throw IncompleteException(e.message ?: e.toString())
+            }
             if (body.isEmpty()) return emptyList()
-            val payments = paymentsFromJson(body)
+            val payments = try {
+                paymentsFromJson(body)
+            } catch (_: IllegalArgumentException) {
+                // Malformed JSON or a bad row shape — unfinished lookup, not a crash.
+                throw IncompleteException("MalformedResponse")
+            } catch (_: IllegalStateException) {
+                throw IncompleteException("MalformedResponse")
+            }
             verifyLogoUrls(baseUrl, payments)
             return payments
         }

@@ -6,10 +6,11 @@ plugins {
     `maven-publish`
     signing
     id("com.vanniktech.maven.publish") version "0.29.0"
+    id("org.jetbrains.kotlinx.kover") version "0.8.3"
 }
 
 group = "pro.branta"
-version = "4.2.0"
+version = "4.3.0"
 
 kotlin {
     jvmToolchain(11)
@@ -25,9 +26,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.3")
     testImplementation("io.mockk:mockk:1.13.12")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -38,6 +41,17 @@ tasks.test {
             excludeTestsMatching("*.ExampleQrCodesTest")
             excludeTestsMatching("*.PolygonRoundTripTest")
             excludeTestsMatching("*.LiveStagingCombosTest")
+            excludeTestsMatching("*.MultiRailRoundTripTest")
+        }
+    }
+}
+
+kover {
+    reports {
+        verify {
+            rule {
+                minBound(80)
+            }
         }
     }
 }

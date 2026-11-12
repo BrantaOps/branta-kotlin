@@ -6,17 +6,35 @@ If you are implementing this SDK in a consumer project, product rules (send vs r
 
 ```bash
 ./gradlew test
-./gradlew build
+./gradlew test koverVerify
+BRANTA_RUN_INTEGRATION=1 BRANTA_API_KEY=… ./gradlew test --tests pro.branta.MultiRailRoundTripTest
 ```
 
-Live example-QR lookups, polygon round-trips, and staging combo POSTs run only when `BRANTA_RUN_INTEGRATION=1` (API key required for write tests).
+Live write/lookup tests (`ExampleQrCodesTest`, `PolygonRoundTripTest`, `LiveStagingCombosTest`, `MultiRailRoundTripTest`) run only when `BRANTA_RUN_INTEGRATION=1` (and `BRANTA_API_KEY` for POST).
 
 ## Layout
 
-Public API is `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyResult`, and the payment models in `pro.branta`.
+Public API lives in `pro.branta`, `pro.branta.enums`, `pro.branta.models`, and `pro.branta.exceptions`: `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyStatus`, `VerifyResult`, `AddPaymentResult`, payment models, and `BrantaPaymentException`.
 
-- `BrantaService` orchestrates encrypt/decrypt around HTTP. `HttpBrantaClient` is internal.
+Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, rail-family lists (`SecretKeyUriFamilies`, per-family lists), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
+
+| File | Role |
+|------|------|
+| `BrantaService.kt` | Encrypt/decrypt orchestration around HTTP. |
+| `BrantaClient.kt` | Raw HTTP. Timeouts map transport failures to incomplete on GET. |
+| `enums/DestinationType.kt` | Destination types, verify statuses live under `enums/`; rail families are internal. |
+| `BrantaApiOptions.kt` | Options; `hmacSecret` deprecated. |
+| `Serialization.kt` | JSON encode/decode. |
+| `QrParser.kt` | QR / URI parsing (internal). |
+| `PaymentBuilder.kt` | Fluent `Payment` construction. |
+| `BrantaExtensions.kt` | Hash, URI encoding, HMAC, options resolvers. |
+| `AesEncryption.kt` | Crypto primitives (internal). |
+
+## Key behaviors
+
 - `verify` is the only lookup. A raw on-chain address (including bare `0x`) is `unknown` and does not GET. `addPayment` encrypts a copy.
-- `DestinationType` is only what `addPayment` accepts: `bitcoin_address`, `bolt11`, `ark_address`, `silent_payment`, `usdt_polygon`, `usdc_polygon`, `usdt_ethereum`, `usdc_ethereum`, `usdt_bsc`, `usdc_bsc`, `usdt_tron`, `usdt_ton`, `usdt_solana`, `usdc_solana`. Pass stablecoin types explicitly.
-- Chain URI verify (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`; see `DestinationType.SecretKeyUriFamilies`) is match-if-any within the scheme's family; token is on `matchedDestinations[].type`, not the scheme. A bare address is `unknown`.
-- `tampered` and `incomplete` are statuses. Do not throw them. Logo-domain mismatches still throw `BrantaPaymentException`.
+- `DestinationType` is only what `addPayment` accepts: bitcoin, bolt11, ark, silent payment, and the stablecoin rails (`usdt_polygon` … `usdc_solana`). No `usdc_ton` yet. Stablecoin rails use chain URIs (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`) with `branta_id` / `branta_secret`. Token is on `matchedDestinations[].type`, not the URI scheme.
+- `verify` `match` includes `matchedDestinations` — wallets send from that list.
+- `tampered` and `incomplete` are statuses. Do not throw them. Logo-domain mismatches still throw `BrantaPaymentException`. Malformed GET bodies and network/timeouts are `incomplete`.
+- `hmacSecret` is deprecated — shared `apiKey` + `setChildPlatform` is the parent-platform path.
+- Default OkHttp client uses a 30s call/connect/read/write timeout. CI gates Sources line coverage at ≥80% via Kover.

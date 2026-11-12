@@ -63,13 +63,28 @@ class BrantaService internal constructor(
     constructor(
         environment: BrantaEnvironment,
         apiKey: String? = null,
-        hmacSecret: String? = null,
+        httpClient: OkHttpClient? = null
+    ) : this(
+        BrantaApiOptions(environment = environment, apiKey = apiKey),
+        HttpBrantaClient(
+            BrantaApiOptions(environment = environment, apiKey = apiKey),
+            httpClient ?: defaultHttpClient()
+        ),
+        UuidSecretGenerator()
+    )
+
+    @Deprecated("Use a shared apiKey with PaymentBuilder.setChildPlatform instead.")
+    @Suppress("DEPRECATION")
+    constructor(
+        environment: BrantaEnvironment,
+        apiKey: String? = null,
+        hmacSecret: String?,
         httpClient: OkHttpClient? = null
     ) : this(
         BrantaApiOptions(environment = environment, apiKey = apiKey, hmacSecret = hmacSecret),
         HttpBrantaClient(
             BrantaApiOptions(environment = environment, apiKey = apiKey, hmacSecret = hmacSecret),
-            httpClient ?: OkHttpClient()
+            httpClient ?: defaultHttpClient()
         ),
         UuidSecretGenerator()
     )
