@@ -71,6 +71,37 @@ class BrantaClientTest {
     }
 
     @Test
+    fun `malformed JSON is incomplete`() = runTest {
+        assertFailsWith<IncompleteException> { clientWithResponse("{").getPayments("value") }
+        assertFailsWith<IncompleteException> { clientWithResponse("[1]").getPayments("value") }
+        assertFailsWith<IncompleteException> {
+            clientWithResponse("""[{"destinations":"x"}]""").getPayments("value")
+        }
+        assertFailsWith<IncompleteException> {
+            clientWithResponse("""[{"destinations":[1]}]""").getPayments("value")
+        }
+    }
+
+    @Test
+    fun `non-array body is empty list`() = runTest {
+        assertTrue(clientWithResponse("""{"not":"an-array"}""").getPayments("value").isEmpty())
+    }
+
+    @Test
+    fun `default client has a 30s call timeout`() {
+        assertEquals(30_000, defaultHttpClient().callTimeoutMillis)
+    }
+
+    @Test
+    fun `socket timeout is incomplete`() = runTest {
+        val httpClient = OkHttpClient.Builder()
+            .addInterceptor { throw java.net.SocketTimeoutException("timed out") }
+            .build()
+        val client = HttpBrantaClient(BrantaApiOptions(environment = BrantaEnvironment.Localhost), httpClient)
+        assertFailsWith<IncompleteException> { client.getPayments("value") }
+    }
+
+    @Test
     fun `post 401 and a missing api key are unauthorized`() = runTest {
         val payment = Payment(destinations = mutableListOf(Destination(value = "bc1q")))
         val unauthorized = assertFailsWith<BrantaPaymentException> {

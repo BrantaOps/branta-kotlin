@@ -77,11 +77,11 @@ internal class QrParser(qrText: String) {
         val scheme = uri?.scheme?.lowercase()
         if (uri == null || scheme == null) {
             destinations.add(QrDestination(text, detectDestinationType(text)))
-        } else if (scheme == "pol") {
+        } else if (DestinationType.SecretKeyUriFamilies.containsKey(scheme)) {
             val dest = destinationFromText(text)
             if (dest != null) {
                 destinations.add(QrDestination(dest, type = null, secretKey = true))
-                expectedSecretKeyTypes = DestinationType.PolygonEvm
+                expectedSecretKeyTypes = DestinationType.SecretKeyUriFamilies.getValue(scheme)
             }
             val queryParams = parseQueryString(queryFromText(text))
             onChainEncryptionText = queryParams["branta_id"]

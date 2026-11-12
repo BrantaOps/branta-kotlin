@@ -60,5 +60,6 @@ internal fun BrantaApiOptions?.environmentUrl(override: BrantaApiOptions?): Stri
 internal fun BrantaApiOptions?.apiKey(override: BrantaApiOptions?): String? =
     override?.apiKey ?: this?.apiKey
 
+@Suppress("DEPRECATION")
 internal fun BrantaApiOptions?.hmacSecret(override: BrantaApiOptions?): String? =
     override?.hmacSecret ?: this?.hmacSecret

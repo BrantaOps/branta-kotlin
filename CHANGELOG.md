@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-11-12
+
+### Added
+- Multi-rail stablecoin destination types `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana`, `UsdcSolana`. `addPayment` encrypts them with a random secret. `verify` parses `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` URIs with `branta_id` / `branta_secret`, match-if-any within the scheme's family. A bare address is `unknown`. Token is on `matchedDestinations[].type`, not the URI scheme.
+
+### Changed
+- **Breaking for 4.2.0 callers:** family lists / `SecretKeyUriFamilies` / `isSecretKeyAddress` are `internal` (match JS/Python/Dart/Swift consumer surface).
+- Malformed GET JSON / bad payment rows map to `incomplete` (not a thrown decode error). Non-array 200 bodies decode as an empty list.
+- Default OkHttp client uses a 30s call/connect/read/write timeout so hung networks become `incomplete` on verify.
+- `hmacSecret` on `BrantaApiOptions` / the matching `BrantaService` constructor is deprecated; prefer a shared `apiKey` with `PaymentBuilder.setChildPlatform`.
+
+### Removed
+- **Breaking for 4.2.0 callers:** `DestinationType.isPolygonEvm` (superseded by `SecretKeyUriFamilies` / `isSecretKeyAddress`).
+
+### Notes
+- `usdc_ton` is deferred until a platform names a concrete TON USDC jetton. Matches `@branta-ops/branta` / `branta` Python / Dart / Swift 4.3.0.
+
 ## [4.2.0] - 2026-11-10
 
 ### Added

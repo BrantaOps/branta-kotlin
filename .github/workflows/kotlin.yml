@@ -14,5 +14,5 @@ jobs:
         with:
           distribution: temurin
           java-version: 11
-      - name: Test
-        run: ./gradlew test
+      - name: Test with coverage gate
+        run: ./gradlew test koverVerify
