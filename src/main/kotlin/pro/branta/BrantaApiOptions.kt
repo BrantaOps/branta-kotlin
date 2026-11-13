@@ -8,4 +8,10 @@ data class BrantaApiOptions(
     val apiKey: String? = null,
     @property:Deprecated("Use a shared apiKey with PaymentBuilder.setChildPlatform instead.")
     val hmacSecret: String? = null
-)
+) {
+    @Suppress("DEPRECATION")
+    override fun toString(): String =
+        "BrantaApiOptions(environment=$environment, apiKey=${redacted(apiKey)}, hmacSecret=${redacted(hmacSecret)})"
+}
+
+private fun redacted(value: String?): String = if (value.isNullOrEmpty()) "null" else "***"

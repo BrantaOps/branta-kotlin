@@ -1,9 +1,12 @@
 package pro.branta
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import pro.branta.models.AddPaymentResult
+import pro.branta.models.Payment
 import org.junit.jupiter.api.Test
 import pro.branta.enums.BrantaEnvironment
 import pro.branta.enums.DestinationType
@@ -47,6 +50,39 @@ class PublicApiTest {
 
         val error = BrantaPaymentException("platformLogoUrl domain does not match the configured API domain")
         assertTrue(error.message!!.contains("platformLogoUrl"))
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `toString redacts api key, hmac secret, and payment secret`() {
+        val options = BrantaApiOptions(
+            environment = BrantaEnvironment.Staging,
+            apiKey = "platform-key",
+            hmacSecret = "parent-hmac"
+        )
+        val printed = options.toString()
+        assertTrue(printed.contains("environment=${BrantaEnvironment.Staging}"))
+        assertTrue(printed.contains("apiKey=***"))
+        assertTrue(printed.contains("hmacSecret=***"))
+        assertFalse(printed.contains("platform-key"))
+        assertFalse(printed.contains("parent-hmac"))
+        assertEquals("k", options.copy(apiKey = "k").apiKey)
+
+        val unset = BrantaApiOptions(environment = BrantaEnvironment.Localhost)
+        assertTrue(unset.toString().contains("apiKey=null"))
+        assertTrue(unset.toString().contains("hmacSecret=null"))
+
+        val fragmentKey = "uuid-secret"
+        val result = AddPaymentResult(
+            payment = Payment(),
+            secret = fragmentKey,
+            verifyUrl = "https://staging.guardrail.branta.pro/v2/verify/cipher#k-1=$fragmentKey"
+        )
+        val resultPrinted = result.toString()
+        assertTrue(resultPrinted.contains("secret=***"))
+        assertTrue(resultPrinted.contains("/v2/verify/cipher"))
+        assertFalse(resultPrinted.contains(fragmentKey))
+        assertEquals(fragmentKey, result.secret)
     }
 
     @Test
