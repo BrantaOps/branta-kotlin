@@ -1,28 +1,27 @@
 package pro.branta
 
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import pro.branta.enums.BrantaEnvironment
 import pro.branta.enums.DestinationType
 import pro.branta.enums.VerifyStatus
-import pro.branta.models.AddPaymentResult
 import pro.branta.models.Payment
 import pro.branta.models.VerifyResult
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-/** Extra live staging POST→GET combinations beyond the dedicated polygon round-trips. */
+/** Extra live staging POST→GET combinations. Skipped unless BRANTA_RUN_INTEGRATION=1 and BRANTA_API_KEY is set. */
 class LiveStagingCombosTest {
     private fun service(): BrantaService {
         val token = System.getenv("BRANTA_INTEGRATION_METRICS_TOKEN")
         val httpClient = if (token.isNullOrEmpty()) {
-            OkHttpClient()
+            defaultHttpClient()
         } else {
-            OkHttpClient.Builder().addInterceptor { chain ->
+            defaultHttpClient().newBuilder().addInterceptor { chain ->
                 chain.proceed(chain.request().newBuilder().header("X-Branta-Integration-Token", token).build())
             }.build()
         }
@@ -33,132 +32,127 @@ class LiveStagingCombosTest {
         )
     }
 
-    private fun polUri(recipient: String, encrypted: String, secret: String): String {
-        val q = listOf(
-            "value" to "50",
-            "user" to "send",
-            "currency" to "USD",
-            "branta_id" to encrypted,
-            "branta_secret" to secret
-        ).joinToString("&") { (k, v) ->
-            "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}"
-        }
-        return "pol:$recipient?$q"
+    private fun rail(type: DestinationType): DestinationType.EvmTokenRail =
+        DestinationType.EvmTokenRails.first { it.type == type }
+
+    private fun urlQueryEscape(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+
+    /** ERC-681 transfer URI for one EVM rail, as a wallet would show it. */
+    private fun transferUri(type: DestinationType, recipient: String, encrypted: String, secret: String): String {
+        val rail = rail(type)
+        return "ethereum:${rail.contract}@${rail.chainId}/transfer?address=$recipient&uint256=1000000" +
+            "&branta_id=${urlQueryEscape(encrypted)}&branta_secret=${urlQueryEscape(secret)}"
     }
 
-    private fun urlQueryEscape(value: String): String =
-        URLEncoder.encode(value, StandardCharsets.UTF_8)
+    private fun bitcoinUri(address: String, encrypted: String, secret: String): String =
+        "bitcoin:$address?branta_id=${urlQueryEscape(encrypted)}&branta_secret=${urlQueryEscape(secret)}"
+
+    private val btc = "bc1qgw3dzmhnyvcswc9r0v0z0ajtp8ulm4nuyeahwr"
+    private val usdt = "0x278297528c32eCa01295B0d2135984d3442ec963"
+    private val usdc = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+    private val swap = "0x1111111111111111111111111111111111111111"
+    private val btcSw = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+
+    private suspend fun BrantaService.mustStatus(qr: String, want: VerifyStatus): VerifyResult {
+        val result = verify(qr)
+        assertEquals(want, result.status, qr)
+        return result
+    }
+
+    private fun Payment.encryptedOf(type: DestinationType): String = destinations.first { it.type == type }.value
 
     @Test
-    fun `staging live combos`() = runBlocking {
+    fun `bitcoin round trip match and tamper`() = runBlocking {
         val svc = service()
-        val btc = "bc1qgw3dzmhnyvcswc9r0v0z0ajtp8ulm4nuyeahwr"
-        val usdt = "0x278297528c32eCa01295B0d2135984d3442ec963"
-        val usdc = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
-        val swap = "0x1111111111111111111111111111111111111111"
-        val btcSw = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        val added = svc.addPayment(PaymentBuilder().addDestination(btc, DestinationType.BitcoinAddress).setTtl(120).build())
+        val enc = added.payment.destinations.single().value
+        val match = svc.mustStatus(bitcoinUri(btc, enc, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.BitcoinAddress), match.matchedDestinations.map { it.type })
+        svc.mustStatus(bitcoinUri(btcSw, enc, added.secret), VerifyStatus.Tampered)
+        svc.mustStatus("bitcoin:$btc", VerifyStatus.Unknown)
+        Unit
+    }
 
-        suspend fun mustAdd(payment: Payment): AddPaymentResult = svc.addPayment(payment)
+    @Test
+    fun `usdt and usdc with different addresses bind their own rail`() = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(
+            PaymentBuilder()
+                .addDestination(usdt, DestinationType.UsdtPolygon)
+                .addDestination(usdc, DestinationType.UsdcPolygon)
+                .setTtl(120)
+                .build()
+        )
+        val encUsdt = added.payment.encryptedOf(DestinationType.UsdtPolygon)
+        val encUsdc = added.payment.encryptedOf(DestinationType.UsdcPolygon)
+        val usdtMatch = svc.mustStatus(transferUri(DestinationType.UsdtPolygon, usdt, encUsdt, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.UsdtPolygon), usdtMatch.matchedDestinations.map { it.type })
+        val usdcMatch = svc.mustStatus(transferUri(DestinationType.UsdcPolygon, usdc, encUsdc, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.UsdcPolygon), usdcMatch.matchedDestinations.map { it.type })
+        Unit
+    }
 
-        suspend fun mustStatus(qr: String, want: VerifyStatus): VerifyResult {
-            val result = svc.verify(qr)
-            assertEquals(want, result.status, qr)
-            return result
-        }
+    @Test
+    fun `the same address under two tokens binds only the scanned token`() = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(
+            PaymentBuilder()
+                .addDestination(usdt, DestinationType.UsdtPolygon)
+                .addDestination(usdt, DestinationType.UsdcPolygon)
+                .setTtl(120)
+                .build()
+        )
+        val encUsdt = added.payment.encryptedOf(DestinationType.UsdtPolygon)
+        val encUsdc = added.payment.encryptedOf(DestinationType.UsdcPolygon)
+        val usdtMatch = svc.mustStatus(transferUri(DestinationType.UsdtPolygon, usdt, encUsdt, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.UsdtPolygon), usdtMatch.matchedDestinations.map { it.type })
+        val usdcMatch = svc.mustStatus(transferUri(DestinationType.UsdcPolygon, usdt, encUsdc, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.UsdcPolygon), usdcMatch.matchedDestinations.map { it.type })
+        svc.mustStatus(transferUri(DestinationType.UsdtPolygon, swap, encUsdt, added.secret), VerifyStatus.Tampered)
+        Unit
+    }
 
-        run {
-            val added = mustAdd(
-                PaymentBuilder().addDestination(btc, DestinationType.BitcoinAddress).setTtl(120).build()
-            )
-            val enc = added.payment.destinations.single().value
-            val qr = "bitcoin:$btc?branta_id=${urlQueryEscape(enc)}&branta_secret=${urlQueryEscape(added.secret)}"
-            val match = mustStatus(qr, VerifyStatus.Match)
-            assertEquals(1, match.matchedDestinations.size)
-            assertEquals(DestinationType.BitcoinAddress, match.matchedDestinations.single().type)
-            mustStatus(
-                "bitcoin:$btcSw?branta_id=${urlQueryEscape(enc)}&branta_secret=${urlQueryEscape(added.secret)}",
-                VerifyStatus.Tampered
-            )
-            mustStatus("bitcoin:$btc", VerifyStatus.Unknown)
-        }
+    @Test
+    fun `bitcoin and usdt sibling rails isolate by type`() = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(
+            PaymentBuilder()
+                .addDestination(btc, DestinationType.BitcoinAddress)
+                .addDestination(usdt, DestinationType.UsdtPolygon)
+                .setTtl(120)
+                .build()
+        )
+        val encBtc = added.payment.encryptedOf(DestinationType.BitcoinAddress)
+        val encUsdt = added.payment.encryptedOf(DestinationType.UsdtPolygon)
 
-        run {
-            val added = mustAdd(
-                PaymentBuilder()
-                    .addDestination(usdt, DestinationType.UsdtPolygon)
-                    .addDestination(usdc, DestinationType.UsdcPolygon)
-                    .setTtl(120)
-                    .build()
-            )
-            var encUsdt = ""
-            var encUsdc = ""
-            for (d in added.payment.destinations) {
-                when (d.type) {
-                    DestinationType.UsdtPolygon -> encUsdt = d.value
-                    DestinationType.UsdcPolygon -> encUsdc = d.value
-                    else -> Unit
-                }
-            }
-            val usdtMatch = mustStatus(polUri(usdt, encUsdt, added.secret), VerifyStatus.Match)
-            assertEquals(1, usdtMatch.matchedDestinations.size)
-            assertEquals(DestinationType.UsdtPolygon, usdtMatch.matchedDestinations.single().type)
-            val usdcMatch = mustStatus(polUri(usdc, encUsdc, added.secret), VerifyStatus.Match)
-            assertEquals(1, usdcMatch.matchedDestinations.size)
-            assertEquals(DestinationType.UsdcPolygon, usdcMatch.matchedDestinations.single().type)
-        }
+        val btcMatch = svc.mustStatus(bitcoinUri(btc, encBtc, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.BitcoinAddress), btcMatch.matchedDestinations.map { it.type })
+        assertTrue(btcMatch.payments.single().destinations.first { it.type == DestinationType.UsdtPolygon }.isEncrypted)
 
-        run {
-            val added = mustAdd(
-                PaymentBuilder()
-                    .addDestination(usdt, DestinationType.UsdtPolygon)
-                    .addDestination(usdt, DestinationType.UsdcPolygon)
-                    .setTtl(120)
-                    .build()
-            )
-            val enc = added.payment.destinations.first().value
-            val match = mustStatus(polUri(usdt, enc, added.secret), VerifyStatus.Match)
-            assertEquals(2, match.matchedDestinations.size)
-        }
+        val usdtMatch = svc.mustStatus(transferUri(DestinationType.UsdtPolygon, usdt, encUsdt, added.secret), VerifyStatus.Match)
+        assertEquals(listOf(DestinationType.UsdtPolygon), usdtMatch.matchedDestinations.map { it.type })
+        assertTrue(usdtMatch.payments.single().destinations.first { it.type == DestinationType.BitcoinAddress }.isEncrypted)
 
-        run {
-            val added = mustAdd(
-                PaymentBuilder()
-                    .addDestination(btc, DestinationType.BitcoinAddress)
-                    .addDestination(usdt, DestinationType.UsdtPolygon)
-                    .setTtl(120)
-                    .build()
-            )
-            var encBtc = ""
-            var encUsdt = ""
-            for (d in added.payment.destinations) {
-                when (d.type) {
-                    DestinationType.BitcoinAddress -> encBtc = d.value
-                    DestinationType.UsdtPolygon -> encUsdt = d.value
-                    else -> Unit
-                }
-            }
-            val btcMatch = mustStatus(
-                "bitcoin:$btc?branta_id=${urlQueryEscape(encBtc)}&branta_secret=${urlQueryEscape(added.secret)}",
-                VerifyStatus.Match
-            )
-            assertEquals(1, btcMatch.matchedDestinations.size)
-            assertEquals(DestinationType.BitcoinAddress, btcMatch.matchedDestinations.single().type)
-            val polMatch = mustStatus(polUri(usdt, encUsdt, added.secret), VerifyStatus.Match)
-            assertEquals(1, polMatch.matchedDestinations.size)
-            assertEquals(DestinationType.UsdtPolygon, polMatch.matchedDestinations.single().type)
-            mustStatus(polUri(swap, encUsdt, added.secret), VerifyStatus.Tampered)
-        }
+        svc.mustStatus(transferUri(DestinationType.UsdtPolygon, swap, encUsdt, added.secret), VerifyStatus.Tampered)
+        Unit
+    }
 
-        run {
-            val added = mustAdd(
-                PaymentBuilder().addDestination(usdt, DestinationType.UsdtPolygon).setTtl(120).build()
-            )
-            val enc = added.payment.destinations.single().value
-            mustStatus(polUri(usdt.lowercase(), enc, added.secret), VerifyStatus.Match)
-            mustStatus(polUri(usdt, enc, "00000000-0000-0000-0000-000000000000"), VerifyStatus.Unknown)
-            mustStatus(usdt, VerifyStatus.Unknown)
-            mustStatus("pol:$usdt?value=50&currency=USD", VerifyStatus.Unknown)
-        }
+    @Test
+    fun `usdt case-insensitive wrong secret and removed scheme are handled`() = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(PaymentBuilder().addDestination(usdt, DestinationType.UsdtPolygon).setTtl(120).build())
+        val enc = added.payment.destinations.single().value
+        svc.mustStatus(transferUri(DestinationType.UsdtPolygon, usdt.lowercase(), enc, added.secret), VerifyStatus.Match)
+        svc.mustStatus(
+            transferUri(DestinationType.UsdtPolygon, usdt, enc, "00000000-0000-0000-0000-000000000000"),
+            VerifyStatus.Unknown
+        )
+        svc.mustStatus(usdt, VerifyStatus.Unknown)
+        // The old pol: scheme no longer verifies, even with valid Branta params.
+        svc.mustStatus(
+            "pol:$usdt?value=50&branta_id=${urlQueryEscape(enc)}&branta_secret=${urlQueryEscape(added.secret)}",
+            VerifyStatus.Unknown
+        )
         Unit
     }
 

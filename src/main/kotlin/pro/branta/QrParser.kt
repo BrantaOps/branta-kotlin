@@ -5,7 +5,7 @@ import java.net.URI
 
 internal data class QrDestination(
     val value: String,
-    /** Known rail type when the scheme or payload names one (e.g. bitcoin). Not set for `pol:`. */
+    /** Rail this value belongs to. Set for bitcoin and ERC-681 transfers. */
     val type: DestinationType? = null,
     /** Visible address that participates in the secret-key swap check. */
     val secretKey: Boolean = false
@@ -51,10 +51,57 @@ internal fun parseQueryString(query: String): Map<String, String> {
 }
 
 private fun queryFromText(text: String): String {
-    val q = text.indexOf('?')
+    // A "?" after the "#" belongs to the fragment, not the query.
+    val hash = text.indexOf('#')
+    val beforeFragment = if (hash == -1) text else text.substring(0, hash)
+    val q = beforeFragment.indexOf('?')
     if (q == -1) return ""
-    val hash = text.indexOf('#', q)
-    return text.substring(q, if (hash == -1) text.length else hash)
+    return beforeFragment.substring(q)
+}
+
+private fun isAsciiDigit(c: Char): Boolean = c in '0'..'9'
+
+private fun isAsciiHex(c: Char): Boolean = isAsciiDigit(c) || c in 'a'..'f' || c in 'A'..'F'
+
+/** Path of an `ethereum:` URI, without scheme, query, or fragment. One leading slash is dropped. */
+private fun erc681Path(text: String): String {
+    var path = text.substring(text.indexOf(':') + 1)
+    val cut = path.indexOfFirst { it == '?' || it == '#' }
+    if (cut != -1) path = path.substring(0, cut)
+    return if (path.startsWith("/")) path.substring(1) else path
+}
+
+/** `0x` or `0X` followed by 40 hex digits. */
+private fun isEvmAddress(value: String): Boolean =
+    value.length == 42 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X') &&
+        value.substring(2).all(::isAsciiHex)
+
+private data class Erc681Transfer(val type: DestinationType, val address: String)
+
+/**
+ * ERC-681 token transfer. Chain id and contract select one destination type.
+ * The deposit address is the `address` query param.
+ */
+private fun parseErc681(text: String): Erc681Transfer? {
+    val path = erc681Path(text)
+    val at = path.indexOf('@')
+    if (at == -1) return null
+    val contract = path.substring(0, at)
+    // The contract prefix is a lowercase `0x`, then 40 hex digits.
+    if (contract.length != 42 || !contract.startsWith("0x") || !contract.substring(2).all(::isAsciiHex)) return null
+    val rest = path.substring(at + 1)
+    val suffix = "/transfer"
+    if (rest.length <= suffix.length || !rest.endsWith(suffix)) return null
+    val chain = rest.substring(0, rest.length - suffix.length)
+    if (chain.isEmpty() || !chain.all(::isAsciiDigit)) return null
+    val digits = chain.trimStart('0')
+    // No supported chain id has more than 15 digits.
+    if (digits.length > 15) return null
+    val chainId = if (digits.isEmpty()) 0L else digits.toLong()
+    val type = DestinationType.evmTokenType(chainId, contract) ?: return null
+    val address = parseQueryString(queryFromText(text))["address"] ?: return null
+    if (!isEvmAddress(address)) return null
+    return Erc681Transfer(type, address)
 }
 
 private fun destinationFromText(text: String): String? =
@@ -64,7 +111,11 @@ internal class QrParser(qrText: String) {
     val destinations: MutableList<QrDestination> = mutableListOf()
     var onChainEncryptionText: String? = null
     var onChainEncryptionSecret: String? = null
-    /** Destination types verify may bind for this QR's scheme (match-if-any). */
+    /**
+     * Destination types this scan may decrypt.
+     * ERC-681 sets one type from the chain id and token contract.
+     * Bitcoin sets `BitcoinAddress`.
+     */
     var expectedSecretKeyTypes: List<DestinationType> = emptyList()
     var hasUnverifiableInstruction: Boolean = false
 
@@ -77,15 +128,17 @@ internal class QrParser(qrText: String) {
         val scheme = uri?.scheme?.lowercase()
         if (uri == null || scheme == null) {
             destinations.add(QrDestination(text, detectDestinationType(text)))
-        } else if (DestinationType.SecretKeyUriFamilies.containsKey(scheme)) {
-            val dest = destinationFromText(text)
-            if (dest != null) {
-                destinations.add(QrDestination(dest, type = null, secretKey = true))
-                expectedSecretKeyTypes = DestinationType.SecretKeyUriFamilies.getValue(scheme)
+        } else if (scheme == "ethereum") {
+            val transfer = parseErc681(text)
+            if (transfer == null) {
+                destinations.add(QrDestination(text, null))
+            } else {
+                destinations.add(QrDestination(transfer.address, transfer.type, secretKey = true))
+                expectedSecretKeyTypes = listOf(transfer.type)
+                val queryParams = parseQueryString(queryFromText(text))
+                onChainEncryptionText = queryParams["branta_id"]
+                onChainEncryptionSecret = queryParams["branta_secret"]
             }
-            val queryParams = parseQueryString(queryFromText(text))
-            onChainEncryptionText = queryParams["branta_id"]
-            onChainEncryptionSecret = queryParams["branta_secret"]
         } else if (scheme == "bitcoin" || scheme == "lightning") {
             val dest = destinationFromText(text)
             if (dest != null) {

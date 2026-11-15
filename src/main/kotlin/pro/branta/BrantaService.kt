@@ -211,7 +211,7 @@ class BrantaService internal constructor(
             if (!destination.isEncrypted) continue
             val type = destination.type ?: continue
             if (!DestinationType.isSecretKeyAddress(type)) continue
-            // Outside this QR's rail family (e.g. bitcoin when scanning pol:) — leave encrypted.
+            // Outside this QR's rail family (e.g. bitcoin when scanning an ERC-681 transfer) — leave encrypted.
             if (expectedOnChainTypes.isNotEmpty() && type !in expectedOnChainTypes) continue
             if (encryptionKey == null) continue
             val decrypted = try {
