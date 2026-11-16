@@ -8,6 +8,34 @@ import java.util.Base64
 
 class AesEncryptionTest {
 
+    // Fixed vectors. Every Branta SDK asserts the same strings, so a payment written by one SDK
+    // stays readable and findable by every other. Do not regenerate these from this code.
+    @Test
+    fun `encrypt fixed vector matches every sdk`() {
+        assertEquals(
+            "mPIKHc3ywVlsBHf3Lv2Rwpz2+fKE0kgUePq2m4fPIUidMuGEHVIB",
+            AesEncryption.encrypt("hello world", "my-secret", deterministicNonce = true),
+        )
+    }
+
+    @Test
+    fun `decrypt fixed vector returns plaintext`() {
+        assertEquals(
+            "hello world",
+            AesEncryption.decrypt("mPIKHc3ywVlsBHf3Lv2Rwpz2+fKE0kgUePq2m4fPIUidMuGEHVIB", "my-secret"),
+        )
+    }
+
+    @Test
+    fun `encrypt derived key fixed vector matches every sdk`() {
+        // Key is the normalized hash of "LNBC10U1PTestInvoice". The value is encrypted lowercased.
+        val key = "261D7974DC0541402A222AC17973D3FF412878C1C179FCD4D866094D610B4496"
+        assertEquals(
+            "WywBRexAiHTi2mnHK/W1DIN79bF1XVhU3BdC3DWpUsdhs5NMbdyZyzWsdjfuFgIV",
+            AesEncryption.encrypt("lnbc10u1ptestinvoice", key, deterministicNonce = true),
+        )
+    }
+
     @Test
     fun `encrypt and decrypt round-trip returns original value`() {
         val value = "test-value"
