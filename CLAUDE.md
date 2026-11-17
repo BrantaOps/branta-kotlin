@@ -16,13 +16,13 @@ Live write/lookup tests (`ExampleQrCodesTest`, `PolygonRoundTripTest`, `LiveStag
 
 Public API lives in `pro.branta`, `pro.branta.enums`, `pro.branta.models`, and `pro.branta.exceptions`: `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyStatus`, `VerifyResult`, `AddPaymentResult`, payment models, and `BrantaPaymentException`.
 
-Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, rail-family lists (`SecretKeyUriFamilies`, per-family lists), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
+Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, the EVM rail table (`EvmTokenRails`, `evmTokenType`), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
 
 | File | Role |
 |------|------|
 | `BrantaService.kt` | Encrypt/decrypt orchestration around HTTP. |
 | `BrantaClient.kt` | Raw HTTP. Timeouts map transport failures to incomplete on GET. |
-| `enums/DestinationType.kt` | Destination types, verify statuses live under `enums/`; rail families are internal. |
+| `enums/DestinationType.kt` | Destination types, verify statuses live under `enums/`; the EVM rail table is internal. |
 | `BrantaApiOptions.kt` | Options; `hmacSecret` deprecated. |
 | `Serialization.kt` | JSON encode/decode. |
 | `QrParser.kt` | QR / URI parsing (internal). |
