@@ -74,22 +74,4 @@ val result = service.addPayment(payment)
 
 Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts the types on [Destination types](https://developer.branta.pro/destination-types), and [Encryption](https://developer.branta.pro/setup/receive/encryption) says which key each uses. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
 
-## Publishing
-
-1. Update `version` in `build.gradle.kts`
-2. Ensure `~/.gradle/gradle.properties` contains your GPG key and Maven Central credentials:
-   ```properties
-   signing.keyId=<last 8 chars of GPG key>
-   signing.password=<passphrase>
-   signing.secretKeyRingFile=<path to ~/.gnupg/secring.gpg>
-   mavenCentralUsername=<sonatype username>
-   mavenCentralPassword=<sonatype password>
-   ```
-3. Publish:
-   ```bash
-   ./gradlew publishToMavenCentral --no-configuration-cache
-   ```
-
-## Responsible Disclosure
-
-Found critical bugs or vulnerabilities? Email them to support@branta.pro.
+[Security](SECURITY.md)
