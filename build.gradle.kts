@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "pro.branta"
-version = "4.3.0"
+version = "4.4.0"
 
 kotlin {
     jvmToolchain(11)

@@ -211,7 +211,7 @@ class BrantaService internal constructor(
             if (!destination.isEncrypted) continue
             val type = destination.type ?: continue
             if (!DestinationType.isSecretKeyAddress(type)) continue
-            // Outside this QR's rail family (e.g. bitcoin when scanning pol:) — leave encrypted.
+            // A type this scan does not bind (e.g. bitcoin when scanning an ERC-681 transfer) — leave encrypted.
             if (expectedOnChainTypes.isNotEmpty() && type !in expectedOnChainTypes) continue
             if (encryptionKey == null) continue
             val decrypted = try {
@@ -220,7 +220,7 @@ class BrantaService internal constructor(
                 continue
             }
             decryptedExpectedRail = true
-            // Match-if-any within the family: a sibling rail with a different address stays encrypted.
+            // Match-if-any among destinations of the scanned type: one with a different address stays encrypted.
             if (expectedOnChainAddress != null && !addressesMatch(decrypted, expectedOnChainAddress)) {
                 continue
             }
@@ -230,7 +230,7 @@ class BrantaService internal constructor(
             destination.id?.let { keys.putIfAbsent(it, encryptionKey) }
             tryDecryptMetadata(payment, destination, encryptionKey)
         }
-        // Tampered only when a family rail decrypted and none matched the scanned address.
+        // Tampered only when a destination of the scanned type decrypted and none matched the scanned address.
         if (expectedOnChainAddress != null && !onChainBound && decryptedExpectedRail) {
             throw TamperedException()
         }

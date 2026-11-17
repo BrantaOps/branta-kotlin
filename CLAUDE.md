@@ -16,13 +16,13 @@ Live write/lookup tests (`ExampleQrCodesTest`, `PolygonRoundTripTest`, `LiveStag
 
 Public API lives in `pro.branta`, `pro.branta.enums`, `pro.branta.models`, and `pro.branta.exceptions`: `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyStatus`, `VerifyResult`, `AddPaymentResult`, payment models, and `BrantaPaymentException`.
 
-Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, rail-family lists (`SecretKeyUriFamilies`, per-family lists), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
+Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, the EVM rail table (`EvmTokenRails`, `evmTokenType`), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
 
 | File | Role |
 |------|------|
 | `BrantaService.kt` | Encrypt/decrypt orchestration around HTTP. |
 | `BrantaClient.kt` | Raw HTTP. Timeouts map transport failures to incomplete on GET. |
-| `enums/DestinationType.kt` | Destination types, verify statuses live under `enums/`; rail families are internal. |
+| `enums/DestinationType.kt` | Destination types, verify statuses live under `enums/`; the EVM rail table is internal. |
 | `BrantaApiOptions.kt` | Options; `hmacSecret` deprecated. |
 | `Serialization.kt` | JSON encode/decode. |
 | `QrParser.kt` | QR / URI parsing (internal). |
@@ -33,7 +33,7 @@ Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEnc
 ## Key behaviors
 
 - `verify` is the only lookup. A raw on-chain address (including bare `0x`) is `unknown` and does not GET. `addPayment` encrypts a copy.
-- `DestinationType` is only what `addPayment` accepts: bitcoin, bolt11, ark, silent payment, and the stablecoin rails (`usdt_polygon` … `usdc_solana`). No `usdc_ton` yet. Stablecoin rails use chain URIs (`pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, `sol:`) with `branta_id` / `branta_secret`. Token is on `matchedDestinations[].type`, not the URI scheme.
+- `DestinationType` is only what `addPayment` accepts: bitcoin, bolt11, ark, silent payment, and the stablecoin rails (`usdt_polygon` … `usdc_solana`, including `usdt_base`, `usdc_base`, `usdt_arbitrum`, `usdc_arbitrum`). No `usdc_ton` yet. EVM USDT/USDC verify is ERC-681: `ethereum:<contract>@<chainId>/transfer?address=<deposit>` plus `branta_id` / `branta_secret`. Chain id plus contract select one destination type (`EvmTokenRails`, internal). `uint256` is not bound. `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` do not verify and do not GET. `addPayment` still encrypts `usdt_tron`, `usdt_ton`, `usdt_solana`, and `usdc_solana`. Token is on `matchedDestinations[].type`.
 - `verify` `match` includes `matchedDestinations` — wallets send from that list.
 - `tampered` and `incomplete` are statuses. Do not throw them. Logo-domain mismatches still throw `BrantaPaymentException`. Malformed GET bodies and network/timeouts are `incomplete`.
 - `hmacSecret` is deprecated — shared `apiKey` + `setChildPlatform` is the parent-platform path.

@@ -358,22 +358,53 @@ class BrantaServiceTest {
         assertEquals("Invoice", result.payments.single().description)
     }
 
-    private fun polUri(recipient: String, encrypted: String, secret: String): String =
-        "pol:$recipient?value=50&user=send&currency=USD&branta_id=$encrypted&branta_secret=$secret"
+    private fun rail(type: DestinationType): DestinationType.EvmTokenRail =
+        DestinationType.EvmTokenRails.first { it.type == type }
 
-    @Test
-    fun `pol usdt match ignores amount query and sets matchedDestinations`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
+    /** ERC-681 transfer URI for one EVM rail, as a wallet would show it. */
+    private fun transferUri(
+        type: DestinationType,
+        recipient: String,
+        encrypted: String,
+        secretParam: String = secret,
+        amount: String = "1000000"
+    ): String {
+        val rail = rail(type)
+        return "ethereum:${rail.contract}@${rail.chainId}/transfer?address=$recipient&uint256=$amount" +
+            "&branta_id=${encodeUriComponent(encrypted)}&branta_secret=${encodeUriComponent(secretParam)}"
+    }
+
+    /** One mixed-case deposit per rail, so a lowercase scan still differs from the stored text. */
+    private fun depositFor(type: DestinationType): String {
+        val index = DestinationType.EvmTokenRails.indexOfFirst { it.type == type } + 1
+        val hex = index.toString(16)
+        return "0xAb" + "1".repeat(38 - hex.length) + hex
+    }
+
+    /** A fresh client and payment. The service mutates the payments it gets back, so never reuse one. */
+    private fun clientWith(vararg destinations: Pair<DestinationType, String>): FakeClient {
         val client = FakeClient()
         client.payments = listOf(
             Payment(
-                destinations = mutableListOf(
-                    Destination(value = cipher, type = DestinationType.UsdtPolygon, id = "zk-usdt", isEncrypted = true)
-                )
+                destinations = destinations.mapIndexed { i, (type, cipher) ->
+                    Destination(value = cipher, type = type, id = "zk-$i", isEncrypted = true)
+                }.toMutableList()
             )
         )
-        val result = service(client).verify(polUri(usdtPolygonAddr, cipher, secret))
+        return client
+    }
+
+    private fun cipherOf(address: String): String = AesEncryption.encrypt(address, secret)
+
+    // ---- Polygon
+
+    @Test
+    fun `polygon usdt match ignores amount and sets matchedDestinations`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val client = clientWith(DestinationType.UsdtPolygon to cipher)
+        val result = service(client).verify(transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr, cipher))
         assertEquals(VerifyStatus.Match, result.status)
+        assertEquals(listOf(cipher), client.lookups)
         assertEquals(DestinationType.UsdtPolygon, result.payments.single().destinations.single().type)
         assertEquals(usdtPolygonAddr, result.payments.single().destinations.single().value)
         assertEquals(1, result.matchedDestinations.size)
@@ -381,68 +412,44 @@ class BrantaServiceTest {
     }
 
     @Test
-    fun `pol usdt case-insensitive match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
-        )
-        val result = service(client).verify(polUri(usdtPolygonAddr.lowercase(), cipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-    }
-
-    @Test
-    fun `pol usdt 0x prefix case-insensitive match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
-        )
-        val mixed = "0X" + usdtPolygonAddr.substring(2)
-        val result = service(client).verify(polUri(mixed, cipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-    }
-
-    @Test
-    fun `pol usdt swapped is tampered`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
-        )
-        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, cipher, secret)).status)
-    }
-
-    @Test
-    fun `bare usdt address is unknown`() = runTest {
-        val client = FakeClient()
-        val result = service(client).verify(usdtPolygonAddr)
-        assertEquals(VerifyStatus.Unknown, result.status)
-        assertTrue(client.lookups.isEmpty())
-    }
-
-    @Test
-    fun `pol without branta params is unknown`() = runTest {
-        val client = FakeClient()
-        val result = service(client).verify("pol:$usdtPolygonAddr?value=50")
-        assertEquals(VerifyStatus.Unknown, result.status)
-        assertTrue(client.lookups.isEmpty())
-    }
-
-    @Test
-    fun `pol ignores sibling bitcoin rail`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
-                )
+    fun `amount is not part of the match`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        for (amount in listOf("1", "50000000", "999999999999")) {
+            val client = clientWith(DestinationType.UsdtPolygon to cipher)
+            val result = service(client).verify(
+                transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr, cipher, amount = amount)
             )
-        )
-        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
+            assertEquals(VerifyStatus.Match, result.status, amount)
+        }
+    }
+
+    @Test
+    fun `polygon usdt case-insensitive and 0X prefix match`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val lower = service(clientWith(DestinationType.UsdtPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr.lowercase(), cipher))
+        assertEquals(VerifyStatus.Match, lower.status)
+        val mixed = "0X" + usdtPolygonAddr.substring(2)
+        val prefixed = service(clientWith(DestinationType.UsdtPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdtPolygon, mixed, cipher))
+        assertEquals(VerifyStatus.Match, prefixed.status)
+    }
+
+    @Test
+    fun `polygon usdt swapped is tampered`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val result = service(clientWith(DestinationType.UsdtPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdtPolygon, swappedPolygonAddr, cipher))
+        assertEquals(VerifyStatus.Tampered, result.status)
+        assertTrue(result.matchedDestinations.isEmpty())
+    }
+
+    @Test
+    fun `polygon scan ignores sibling bitcoin rail`() = runTest {
+        val usdtCipher = cipherOf(usdtPolygonAddr)
+        val btcCipher = cipherOf(address)
+        val client = clientWith(DestinationType.BitcoinAddress to btcCipher, DestinationType.UsdtPolygon to usdtCipher)
+        val result = service(client).verify(transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr, usdtCipher))
         assertEquals(VerifyStatus.Match, result.status)
         val dests = result.payments.single().destinations
         assertTrue(dests[0].isEncrypted)
@@ -452,18 +459,10 @@ class BrantaServiceTest {
     }
 
     @Test
-    fun `bitcoin ignores sibling usdt rail`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
-                )
-            )
-        )
+    fun `bitcoin scan ignores sibling usdt rail`() = runTest {
+        val usdtCipher = cipherOf(usdtPolygonAddr)
+        val btcCipher = cipherOf(address)
+        val client = clientWith(DestinationType.BitcoinAddress to btcCipher, DestinationType.UsdtPolygon to usdtCipher)
         val result = service(client).verify("bitcoin:$address?branta_id=${encodeUriComponent(btcCipher)}&branta_secret=$secret")
         assertEquals(VerifyStatus.Match, result.status)
         val dests = result.payments.single().destinations
@@ -474,35 +473,25 @@ class BrantaServiceTest {
     }
 
     @Test
-    fun `pol swapped still tampered with sibling bitcoin`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
-                )
-            )
+    fun `polygon swapped is still tampered with a sibling bitcoin rail`() = runTest {
+        val usdtCipher = cipherOf(usdtPolygonAddr)
+        val client = clientWith(
+            DestinationType.BitcoinAddress to cipherOf(address),
+            DestinationType.UsdtPolygon to usdtCipher
         )
-        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, usdtCipher, secret)).status)
+        val result = service(client).verify(transferUri(DestinationType.UsdtPolygon, swappedPolygonAddr, usdtCipher))
+        assertEquals(VerifyStatus.Tampered, result.status)
     }
 
     @Test
-    fun `pol match-if-any dual usdt leaves sibling encrypted`() = runTest {
-        val matchCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val siblingCipher = AesEncryption.encrypt(siblingUsdtAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = siblingCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
-                    Destination(value = matchCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
-                )
-            )
+    fun `a second usdt destination with another address stays encrypted`() = runTest {
+        val matchCipher = cipherOf(usdtPolygonAddr)
+        val siblingCipher = cipherOf(siblingUsdtAddr)
+        val client = clientWith(
+            DestinationType.UsdtPolygon to siblingCipher,
+            DestinationType.UsdtPolygon to matchCipher
         )
-        val result = service(client).verify(polUri(usdtPolygonAddr, matchCipher, secret))
+        val result = service(client).verify(transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr, matchCipher))
         assertEquals(VerifyStatus.Match, result.status)
         val dests = result.payments.single().destinations
         assertTrue(dests[0].isEncrypted)
@@ -512,113 +501,66 @@ class BrantaServiceTest {
     }
 
     @Test
-    fun `pol swapped tampered when no polygon family rail matches`() = runTest {
-        val matchCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val siblingCipher = AesEncryption.encrypt(siblingUsdtAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = siblingCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
-                    Destination(value = matchCipher, type = DestinationType.UsdtPolygon, isEncrypted = true)
-                )
-            )
+    fun `swapped is tampered when no destination of the type matches`() = runTest {
+        val matchCipher = cipherOf(usdtPolygonAddr)
+        val client = clientWith(
+            DestinationType.UsdtPolygon to cipherOf(siblingUsdtAddr),
+            DestinationType.UsdtPolygon to matchCipher
         )
-        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, matchCipher, secret)).status)
+        val result = service(client).verify(transferUri(DestinationType.UsdtPolygon, swappedPolygonAddr, matchCipher))
+        assertEquals(VerifyStatus.Tampered, result.status)
     }
 
     @Test
-    fun `pol usdc match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdcPolygon, isEncrypted = true)))
-        )
-        val match = service(client).verify(polUri(usdcPolygonAddr, cipher, secret))
+    fun `polygon usdc match and swapped`() = runTest {
+        val cipher = cipherOf(usdcPolygonAddr)
+        val match = service(clientWith(DestinationType.UsdcPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdcPolygon, usdcPolygonAddr, cipher))
         assertEquals(VerifyStatus.Match, match.status)
         assertEquals(DestinationType.UsdcPolygon, match.matchedDestinations.single().type)
+        val swapped = service(clientWith(DestinationType.UsdcPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdcPolygon, swappedPolygonAddr, cipher))
+        assertEquals(VerifyStatus.Tampered, swapped.status)
     }
 
     @Test
-    fun `pol usdc swapped is tampered`() = runTest {
-        val cipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdcPolygon, isEncrypted = true)))
+    fun `a scan binds the scanned token and leaves the other encrypted`() = runTest {
+        val usdtCipher = cipherOf(usdtPolygonAddr)
+        val usdcCipher = cipherOf(usdcPolygonAddr)
+        val cases = listOf(
+            Triple(DestinationType.UsdtPolygon, usdtPolygonAddr, usdtCipher) to 0,
+            Triple(DestinationType.UsdcPolygon, usdcPolygonAddr, usdcCipher) to 1
         )
-        assertEquals(VerifyStatus.Tampered, service(client).verify(polUri(swappedPolygonAddr, cipher, secret)).status)
-    }
-
-    @Test
-    fun `pol binds usdt and leaves sibling usdc encrypted`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
-                )
+        for ((scan, boundIndex) in cases) {
+            val client = clientWith(
+                DestinationType.UsdtPolygon to usdtCipher,
+                DestinationType.UsdcPolygon to usdcCipher
             )
-        )
-        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        val dests = result.payments.single().destinations
-        assertFalse(dests[0].isEncrypted)
-        assertEquals(DestinationType.UsdtPolygon, dests[0].type)
-        assertTrue(dests[1].isEncrypted)
-        assertEquals(DestinationType.UsdcPolygon, dests[1].type)
+            val result = service(client).verify(transferUri(scan.first, scan.second, scan.third))
+            assertEquals(VerifyStatus.Match, result.status, scan.first.wire)
+            result.payments.single().destinations.forEachIndexed { i, d ->
+                assertEquals(i != boundIndex, d.isEncrypted, "${scan.first.wire} #$i")
+            }
+        }
     }
 
     @Test
-    fun `pol binds usdc and leaves sibling usdt encrypted`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdcPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(polUri(usdcPolygonAddr, usdcCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        val dests = result.payments.single().destinations
-        assertTrue(dests[0].isEncrypted)
-        assertEquals(DestinationType.UsdtPolygon, dests[0].type)
-        assertFalse(dests[1].isEncrypted)
-        assertEquals(DestinationType.UsdcPolygon, dests[1].type)
+    fun `polygon wrong secret is unknown`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val result = service(clientWith(DestinationType.UsdtPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdtPolygon, usdtPolygonAddr, cipher, secretParam = "wrong-secret"))
+        assertEquals(VerifyStatus.Unknown, result.status)
     }
 
     @Test
-    fun `pol wrong secret is unknown`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
-        )
-        assertEquals(VerifyStatus.Unknown, service(client).verify(polUri(usdtPolygonAddr, cipher, "wrong-secret")).status)
-    }
-
-    @Test
-    fun `same address usdt and usdc both match`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtPolygon, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcPolygon, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(polUri(usdtPolygonAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        assertEquals(2, result.matchedDestinations.size)
+    fun `the same address under two tokens binds only the scanned token`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        for (scan in listOf(DestinationType.UsdtPolygon, DestinationType.UsdcPolygon)) {
+            val client = clientWith(DestinationType.UsdtPolygon to cipher, DestinationType.UsdcPolygon to cipher)
+            val result = service(client).verify(transferUri(scan, usdtPolygonAddr, cipher))
+            assertEquals(VerifyStatus.Match, result.status, scan.wire)
+            assertEquals(listOf(scan), result.matchedDestinations.map { it.type }, scan.wire)
+        }
     }
 
     @Test
@@ -639,273 +581,181 @@ class BrantaServiceTest {
         assertTrue(usdcClient.posted!!.destinations.single().value != usdcPolygonAddr)
     }
 
-    private fun chainUri(scheme: String, recipient: String, encrypted: String, secret: String): String =
-        "$scheme:$recipient?value=50&branta_id=${encodeUriComponent(encrypted)}&branta_secret=${encodeUriComponent(secret)}"
+    // ---- Every EVM rail
 
-    private suspend fun assertChainMatch(scheme: String, address: String, type: DestinationType) {
-        val cipher = AesEncryption.encrypt(address, secret)
+    @Test
+    fun `every evm rail matches and returns the scanned type`() = runTest {
+        for (rail in DestinationType.EvmTokenRails) {
+            val type = rail.type
+            val addr = depositFor(type)
+            val cipher = cipherOf(addr)
+
+            val client = clientWith(type to cipher)
+            val result = service(client).verify(transferUri(type, addr, cipher))
+            assertEquals(VerifyStatus.Match, result.status, type.wire)
+            assertEquals(listOf(cipher), client.lookups, type.wire)
+            assertEquals(listOf(type), result.matchedDestinations.map { it.type }, type.wire)
+            assertEquals(listOf(addr), result.matchedDestinations.map { it.value }, type.wire)
+
+            val lower = service(clientWith(type to cipher)).verify(transferUri(type, addr.lowercase(), cipher))
+            assertEquals(VerifyStatus.Match, lower.status, type.wire)
+
+            val tampered = service(clientWith(type to cipher)).verify(transferUri(type, swappedEvmAddr, cipher))
+            assertEquals(VerifyStatus.Tampered, tampered.status, type.wire)
+            assertTrue(tampered.matchedDestinations.isEmpty(), type.wire)
+        }
+    }
+
+    @Test
+    fun `every evm rail on the wrong chain or without branta params is unknown without a lookup`() = runTest {
         val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = type, id = "zk", isEncrypted = true)))
-        )
-        val result = service(client).verify(chainUri(scheme, address, cipher, secret))
+        for (rail in DestinationType.EvmTokenRails) {
+            val addr = depositFor(rail.type)
+            val wrongChain = service(client).verify(
+                "ethereum:${rail.contract}@999999/transfer?address=$addr&branta_id=enc&branta_secret=$secret"
+            )
+            assertEquals(VerifyStatus.Unknown, wrongChain.status, rail.type.wire)
+            val noParams = service(client).verify(
+                "ethereum:${rail.contract}@${rail.chainId}/transfer?address=$addr&uint256=1000000"
+            )
+            assertEquals(VerifyStatus.Unknown, noParams.status, rail.type.wire)
+        }
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `an ethereum scan ignores a sibling bitcoin rail`() = runTest {
+        val usdtCipher = cipherOf(usdtEthereumAddr)
+        val btcCipher = cipherOf(address)
+        val result = service(
+            clientWith(DestinationType.BitcoinAddress to btcCipher, DestinationType.UsdtEthereum to usdtCipher)
+        ).verify(transferUri(DestinationType.UsdtEthereum, usdtEthereumAddr, usdtCipher))
         assertEquals(VerifyStatus.Match, result.status)
-        assertEquals(listOf(cipher), client.lookups)
-        assertEquals(type, result.matchedDestinations.single().type)
-        assertEquals(address, result.matchedDestinations.single().value)
-    }
+        assertTrue(result.payments.single().destinations[0].isEncrypted)
+        assertEquals(DestinationType.UsdtEthereum, result.matchedDestinations.single().type)
 
-    private suspend fun assertChainSwapped(scheme: String, address: String, swapped: String, type: DestinationType) {
-        val cipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = type, isEncrypted = true)))
-        )
-        assertEquals(VerifyStatus.Tampered, service(client).verify(chainUri(scheme, swapped, cipher, secret)).status)
+        val swapped = service(
+            clientWith(DestinationType.BitcoinAddress to btcCipher, DestinationType.UsdtEthereum to usdtCipher)
+        ).verify(transferUri(DestinationType.UsdtEthereum, swappedEvmAddr, usdtCipher))
+        assertEquals(VerifyStatus.Tampered, swapped.status)
     }
 
     @Test
-    fun `eth usdt match`() = runTest { assertChainMatch("eth", usdtEthereumAddr, DestinationType.UsdtEthereum) }
-
-    @Test
-    fun `eth usdc match`() = runTest { assertChainMatch("eth", usdcEthereumAddr, DestinationType.UsdcEthereum) }
-
-    @Test
-    fun `bsc usdt match`() = runTest { assertChainMatch("bsc", usdtBscAddr, DestinationType.UsdtBsc) }
-
-    @Test
-    fun `bsc usdc match`() = runTest { assertChainMatch("bsc", usdcBscAddr, DestinationType.UsdcBsc) }
-
-    @Test
-    fun `tron usdt match`() = runTest { assertChainMatch("tron", usdtTronAddr, DestinationType.UsdtTron) }
-
-    @Test
-    fun `ton usdt match`() = runTest { assertChainMatch("ton", usdtTonAddr, DestinationType.UsdtTon) }
-
-    @Test
-    fun `sol usdt match`() = runTest { assertChainMatch("sol", usdtSolanaAddr, DestinationType.UsdtSolana) }
-
-    @Test
-    fun `sol usdc match`() = runTest { assertChainMatch("sol", usdcSolanaAddr, DestinationType.UsdcSolana) }
-
-    @Test
-    fun `eth usdt case insensitive match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtEthereumAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtEthereum, isEncrypted = true)))
+    fun `a dual-token payment binds only the scanned token`() = runTest {
+        val usdtCipher = cipherOf(usdtEthereumAddr)
+        val usdcCipher = cipherOf(usdcEthereumAddr)
+        fun dual() = clientWith(
+            DestinationType.UsdtEthereum to usdtCipher,
+            DestinationType.UsdcEthereum to usdcCipher
         )
-        assertEquals(
-            VerifyStatus.Match,
-            service(client).verify(chainUri("eth", usdtEthereumAddr.lowercase(), cipher, secret)).status
-        )
+
+        val usdt = service(dual()).verify(transferUri(DestinationType.UsdtEthereum, usdtEthereumAddr, usdtCipher))
+        assertEquals(VerifyStatus.Match, usdt.status)
+        assertEquals(listOf(DestinationType.UsdtEthereum), usdt.matchedDestinations.map { it.type })
+        assertFalse(usdt.payments.single().destinations[0].isEncrypted)
+        assertTrue(usdt.payments.single().destinations[1].isEncrypted)
+
+        val usdc = service(dual()).verify(transferUri(DestinationType.UsdcEthereum, usdcEthereumAddr, usdtCipher))
+        assertEquals(VerifyStatus.Match, usdc.status)
+        assertEquals(listOf(DestinationType.UsdcEthereum), usdc.matchedDestinations.map { it.type })
+        assertTrue(usdc.payments.single().destinations[0].isEncrypted)
+        assertFalse(usdc.payments.single().destinations[1].isEncrypted)
+
+        val swapped = service(dual()).verify(transferUri(DestinationType.UsdtEthereum, swappedEvmAddr, usdtCipher))
+        assertEquals(VerifyStatus.Tampered, swapped.status)
     }
 
     @Test
-    fun `eth usdt 0X prefix match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtEthereumAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtEthereum, isEncrypted = true)))
-        )
-        val mixedPrefix = "0X" + usdtEthereumAddr.substring(2)
-        assertEquals(VerifyStatus.Match, service(client).verify(chainUri("eth", mixedPrefix, cipher, secret)).status)
+    fun `a usdc scan against a usdt-only payment is unknown`() = runTest {
+        val cipher = cipherOf(usdtEthereumAddr)
+        val result = service(clientWith(DestinationType.UsdtEthereum to cipher))
+            .verify(transferUri(DestinationType.UsdcEthereum, usdcEthereumAddr, cipher))
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(result.matchedDestinations.isEmpty())
     }
 
     @Test
-    fun `bsc usdt case insensitive match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtBscAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtBsc, isEncrypted = true)))
-        )
-        assertEquals(
-            VerifyStatus.Match,
-            service(client).verify(chainUri("bsc", usdtBscAddr.lowercase(), cipher, secret)).status
-        )
+    fun `an ethereum scan does not match a polygon-only payment`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val result = service(clientWith(DestinationType.UsdtPolygon to cipher))
+            .verify(transferUri(DestinationType.UsdtEthereum, usdtEthereumAddr, cipher))
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(result.matchedDestinations.isEmpty())
     }
 
     @Test
-    fun `bsc usdt 0X prefix match`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtBscAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtBsc, isEncrypted = true)))
-        )
-        assertEquals(
-            VerifyStatus.Match,
-            service(client).verify(chainUri("bsc", "0X" + usdtBscAddr.substring(2), cipher, secret)).status
-        )
-    }
-
-    @Test
-    fun `eth bsc tron ton sol swapped are tampered`() = runTest {
-        assertChainSwapped("eth", usdtEthereumAddr, swappedEvmAddr, DestinationType.UsdtEthereum)
-        assertChainSwapped("bsc", usdtBscAddr, swappedEvmAddr, DestinationType.UsdtBsc)
-        assertChainSwapped("tron", usdtTronAddr, "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", DestinationType.UsdtTron)
-        assertChainSwapped("ton", usdtTonAddr, "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c", DestinationType.UsdtTon)
-        assertChainSwapped("sol", usdcSolanaAddr, "11111111111111111111111111111111", DestinationType.UsdcSolana)
-    }
-
-    @Test
-    fun `eth ignores sibling bitcoin rail`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtEthereumAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtEthereum, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(chainUri("eth", usdtEthereumAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        val dests = result.payments.single().destinations
-        assertTrue(dests[0].isEncrypted)
-        assertFalse(dests[1].isEncrypted)
-        assertEquals(usdtEthereumAddr, dests[1].value)
-    }
-
-    @Test
-    fun `eth swapped still tampered with sibling bitcoin`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtEthereumAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtEthereum, isEncrypted = true)
-                )
-            )
-        )
-        assertEquals(
-            VerifyStatus.Tampered,
-            service(client).verify(chainUri("eth", swappedEvmAddr, usdtCipher, secret)).status
-        )
-    }
-
-    @Test
-    fun `bsc ignores sibling bitcoin rail`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtBscAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtBsc, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(chainUri("bsc", usdtBscAddr, usdtCipher, secret))
+    fun `an ethereum scan leaves a polygon rail in the same payment encrypted`() = runTest {
+        val polCipher = cipherOf(usdtPolygonAddr)
+        val ethCipher = cipherOf(usdtEthereumAddr)
+        val result = service(
+            clientWith(DestinationType.UsdtPolygon to polCipher, DestinationType.UsdtEthereum to ethCipher)
+        ).verify(transferUri(DestinationType.UsdtEthereum, usdtEthereumAddr, ethCipher))
         assertEquals(VerifyStatus.Match, result.status)
         assertTrue(result.payments.single().destinations[0].isEncrypted)
         assertFalse(result.payments.single().destinations[1].isEncrypted)
+        assertEquals(1, result.matchedDestinations.size)
     }
 
+    // ---- Forms that do not verify
+
     @Test
-    fun `bsc swapped still tampered with sibling bitcoin`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtBscAddr, secret)
-        val btcCipher = AesEncryption.encrypt(address, secret)
+    fun `other functions are unknown without a lookup`() = runTest {
+        val rail = rail(DestinationType.UsdtBase)
         val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = btcCipher, type = DestinationType.BitcoinAddress, isEncrypted = true),
-                    Destination(value = usdtCipher, type = DestinationType.UsdtBsc, isEncrypted = true)
-                )
+        for (function in listOf("approve", "transferFrom", "transfer;x=1")) {
+            val result = service(client).verify(
+                "ethereum:${rail.contract}@${rail.chainId}/$function?address=$swappedEvmAddr&uint256=1&branta_id=abc&branta_secret=$secret"
             )
-        )
-        assertEquals(
-            VerifyStatus.Tampered,
-            service(client).verify(chainUri("bsc", swappedEvmAddr, usdtCipher, secret)).status
-        )
-    }
-
-    @Test
-    fun `eth binds usdt and leaves sibling usdc encrypted`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtEthereumAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdcEthereumAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtEthereum, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcEthereum, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(chainUri("eth", usdtEthereumAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        val dests = result.payments.single().destinations
-        assertFalse(dests[0].isEncrypted)
-        assertEquals(DestinationType.UsdtEthereum, dests[0].type)
-        assertTrue(dests[1].isEncrypted)
-        assertEquals(DestinationType.UsdcEthereum, dests[1].type)
-    }
-
-    @Test
-    fun `bsc binds usdt and leaves sibling usdc encrypted`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtBscAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdcBscAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtBsc, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcBsc, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(chainUri("bsc", usdtBscAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        assertEquals(DestinationType.UsdtBsc, result.matchedDestinations.single().type)
-        assertTrue(result.payments.single().destinations[1].isEncrypted)
-    }
-
-    @Test
-    fun `sol binds usdt and leaves sibling usdc encrypted`() = runTest {
-        val usdtCipher = AesEncryption.encrypt(usdtSolanaAddr, secret)
-        val usdcCipher = AesEncryption.encrypt(usdcSolanaAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(
-                destinations = mutableListOf(
-                    Destination(value = usdtCipher, type = DestinationType.UsdtSolana, isEncrypted = true),
-                    Destination(value = usdcCipher, type = DestinationType.UsdcSolana, isEncrypted = true)
-                )
-            )
-        )
-        val result = service(client).verify(chainUri("sol", usdtSolanaAddr, usdtCipher, secret))
-        assertEquals(VerifyStatus.Match, result.status)
-        assertEquals(DestinationType.UsdtSolana, result.matchedDestinations.single().type)
-        assertTrue(result.payments.single().destinations[1].isEncrypted)
-    }
-
-    @Test
-    fun `eth uri with polygon-only payment is unknown`() = runTest {
-        val cipher = AesEncryption.encrypt(usdtPolygonAddr, secret)
-        val client = FakeClient()
-        client.payments = listOf(
-            Payment(destinations = mutableListOf(Destination(value = cipher, type = DestinationType.UsdtPolygon, isEncrypted = true)))
-        )
-        assertEquals(
-            VerifyStatus.Unknown,
-            service(client).verify(chainUri("eth", usdtEthereumAddr, cipher, secret)).status
-        )
-    }
-
-    @Test
-    fun `bare chain addresses and uris without branta params are unknown`() = runTest {
-        val client = FakeClient()
-        listOf(usdtEthereumAddr, usdtBscAddr, usdtTronAddr, usdtTonAddr, usdcSolanaAddr).forEach {
-            assertEquals(VerifyStatus.Unknown, service(client).verify(it).status)
+            assertEquals(VerifyStatus.Unknown, result.status, function)
         }
-        assertEquals(VerifyStatus.Unknown, service(client).verify("eth:$usdtEthereumAddr?value=50").status)
-        assertEquals(VerifyStatus.Unknown, service(client).verify("ton:$usdtTonAddr").status)
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `the authority form is unknown without a lookup`() = runTest {
+        val rail = rail(DestinationType.UsdtBase)
+        val client = FakeClient()
+        val result = service(client).verify(
+            "ethereum://${rail.contract}@${rail.chainId}/transfer?address=$swappedEvmAddr&branta_id=abc&branta_secret=$secret"
+        )
+        assertEquals(VerifyStatus.Unknown, result.status)
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `unparseable input is unknown and does not throw`() = runTest {
+        val client = FakeClient()
+        val inputs = listOf(
+            "ethereum://[bad/transfer",
+            "bitcoin://[bad",
+            "ethereum:0xc2132d05d31c914a87c6611c10748aeb04b58e8f@" + "9".repeat(5000) +
+                "/transfer?address=$swappedEvmAddr"
+        )
+        for (input in inputs) {
+            assertEquals(VerifyStatus.Unknown, service(client).verify(input).status, input.take(40))
+        }
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `removed schemes are unknown without a lookup even with valid params`() = runTest {
+        val cipher = cipherOf(usdtPolygonAddr)
+        val client = clientWith(DestinationType.UsdtPolygon to cipher)
+        for (scheme in listOf("pol", "eth", "bsc", "tron", "ton", "sol")) {
+            val result = service(client).verify(
+                "$scheme:$usdtPolygonAddr?value=50&branta_id=${encodeUriComponent(cipher)}&branta_secret=$secret"
+            )
+            assertEquals(VerifyStatus.Unknown, result.status, scheme)
+        }
+        assertTrue(client.lookups.isEmpty())
+    }
+
+    @Test
+    fun `bare chain addresses are unknown without a lookup`() = runTest {
+        val client = FakeClient()
+        listOf(usdtPolygonAddr, usdtEthereumAddr, usdtTronAddr, usdtTonAddr, usdcSolanaAddr).forEach {
+            assertEquals(VerifyStatus.Unknown, service(client).verify(it).status, it)
+        }
         assertTrue(client.lookups.isEmpty())
     }
 
@@ -918,6 +768,10 @@ class BrantaServiceTest {
             usdcEthereumAddr to DestinationType.UsdcEthereum,
             usdtBscAddr to DestinationType.UsdtBsc,
             usdcBscAddr to DestinationType.UsdcBsc,
+            depositFor(DestinationType.UsdtBase) to DestinationType.UsdtBase,
+            depositFor(DestinationType.UsdcBase) to DestinationType.UsdcBase,
+            depositFor(DestinationType.UsdtArbitrum) to DestinationType.UsdtArbitrum,
+            depositFor(DestinationType.UsdcArbitrum) to DestinationType.UsdcArbitrum,
             usdtTronAddr to DestinationType.UsdtTron,
             usdtTonAddr to DestinationType.UsdtTon,
             usdtSolanaAddr to DestinationType.UsdtSolana,

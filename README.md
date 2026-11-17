@@ -11,7 +11,7 @@ Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and 
 
 ```kotlin
 dependencies {
-    implementation("pro.branta:branta:4.3.0")
+    implementation("pro.branta:branta:4.4.0")
 }
 ```
 
@@ -27,8 +27,8 @@ val result = service.verify(input)
 when (result.status) {
     VerifyStatus.Match -> {
         // Show the card for result.payments.first(). Link it to result.verifyUrl.
-        // For chain URIs, token is on result.matchedDestinations[i].type
-        // (e.g. UsdtEthereum) — do not infer it from the scheme.
+        // For EVM stablecoins, token is on result.matchedDestinations[i].type
+        // (e.g. UsdcBase). Pay from that list.
     }
     VerifyStatus.Unknown -> {
         // Not in Branta — show nothing.
@@ -43,7 +43,7 @@ when (result.status) {
 }
 ```
 
-On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. Stablecoin rails need a chain URI with the same params — `pol:` (`usdt_polygon`, `usdc_polygon`), `eth:` (`usdt_ethereum`, `usdc_ethereum`), `bsc:` (`usdt_bsc`, `usdc_bsc`), `tron:` (`usdt_tron`), `ton:` (`usdt_ton`), `sol:` (`usdt_solana`, `usdc_solana`). Token is on `matchedDestinations[].type`, not the URI scheme; verify is match-if-any within the scheme's family. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`.
+On-chain Bitcoin needs a `bitcoin:` URI with `branta_id` / `branta_secret`. EVM stablecoins (USDT and USDC on Ethereum, Polygon, BNB Smart Chain, Base, and Arbitrum) need an ERC-681 `ethereum:<token-contract>@<chain-id>/transfer?address=<deposit>` URI with the same params. The chain id and token contract select the destination type, and `uint256` is not part of the match. `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` do not verify. bolt11, Ark, and silent payments resolve from the value. A bare address (including bare `0x`) is `unknown`. Tron, TON, and Solana rails encrypt on `addPayment` but have no verify URI.
 
 A 404 is `unknown`. 5xx, 429, no network, a timeout, or a malformed GET body is `incomplete`. `verifyUrl` is always returned. A logo on the wrong origin throws.
 
@@ -65,10 +65,10 @@ val payment = PaymentBuilder()
 
 val result = service.addPayment(payment)
 // Store result.secret with the invoice. Put branta_id and branta_secret on the QR
-// (bitcoin:…, pol:…, eth:…, …).
+// (bitcoin:… or the ERC-681 ethereum:… URI).
 ```
 
-Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, `UsdtPolygon`, `UsdcPolygon`, `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana`.
+Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts `BitcoinAddress`, `Bolt11`, `ArkAddress`, `SilentPayment`, `UsdtPolygon`, `UsdcPolygon`, `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtBase`, `UsdcBase`, `UsdtArbitrum`, `UsdcArbitrum`, `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana`.
 
 Shared-key parent platforms tag the child on the builder:
 

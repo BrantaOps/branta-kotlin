@@ -2,10 +2,13 @@ package pro.branta
 
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import pro.branta.enums.BrantaEnvironment
 import pro.branta.enums.DestinationType
@@ -14,16 +17,8 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.stream.Stream
 
-/** Live staging addPayment → verify for every secret-key rail. Gated like PolygonRoundTripTest. */
+/** Live staging addPayment → verify for every rail. Skipped unless BRANTA_RUN_INTEGRATION=1 and BRANTA_API_KEY is set. */
 class MultiRailRoundTripTest {
-    data class SecretKeyRail(
-        val type: DestinationType,
-        val scheme: String,
-        val address: String,
-        val swapped: String,
-        val caseFold: Boolean = false
-    )
-
     private fun service(): BrantaService {
         val token = System.getenv("BRANTA_INTEGRATION_METRICS_TOKEN")
         val httpClient = if (token.isNullOrEmpty()) {
@@ -40,46 +35,122 @@ class MultiRailRoundTripTest {
         )
     }
 
-    private fun secretKeyUri(scheme: String, recipient: String, encrypted: String, secret: String): String {
-        val q = listOf(
-            "branta_id" to encrypted,
-            "branta_secret" to secret
-        ).joinToString("&") { (k, v) ->
-            "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}"
-        }
-        return "$scheme:$recipient?$q"
+    private fun rail(type: DestinationType): DestinationType.EvmTokenRail =
+        DestinationType.EvmTokenRails.first { it.type == type }
+
+    private fun urlQueryEscape(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+
+    /** ERC-681 transfer URI for one EVM rail, as a wallet would show it. */
+    private fun transferUri(type: DestinationType, recipient: String, encrypted: String, secret: String): String {
+        val rail = rail(type)
+        return "ethereum:${rail.contract}@${rail.chainId}/transfer?address=$recipient&uint256=1000000" +
+            "&branta_id=${urlQueryEscape(encrypted)}&branta_secret=${urlQueryEscape(secret)}"
+    }
+
+    private fun bitcoinUri(address: String, encrypted: String, secret: String): String =
+        "bitcoin:$address?branta_id=${urlQueryEscape(encrypted)}&branta_secret=${urlQueryEscape(secret)}"
+
+    /** Mixed-case deposit per rail, so the lowercase-scan check differs from the stored text. */
+    private fun depositFor(type: DestinationType): String {
+        val index = DestinationType.EvmTokenRails.indexOfFirst { it.type == type } + 1
+        val hex = index.toString(16)
+        return "0xAb" + "1".repeat(38 - hex.length) + hex
+    }
+
+    @Test
+    fun `bitcoin round trip`() = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(
+            PaymentBuilder().addDestination(BITCOIN, DestinationType.BitcoinAddress).setTtl(180).build()
+        )
+        val encrypted = added.payment.destinations.single().value
+        assertNotEquals(BITCOIN, encrypted)
+
+        val match = svc.verify(bitcoinUri(BITCOIN, encrypted, added.secret))
+        assertEquals(VerifyStatus.Match, match.status)
+        assertEquals(listOf(DestinationType.BitcoinAddress), match.matchedDestinations.map { it.type })
+        assertEquals(BITCOIN, match.matchedDestinations.single().value)
+
+        assertEquals(VerifyStatus.Tampered, svc.verify(bitcoinUri(BITCOIN_SWAPPED, encrypted, added.secret)).status)
+        assertEquals(VerifyStatus.Unknown, svc.verify(BITCOIN).status)
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("secretKeyRails")
-    fun `staging secret-key round-trip`(rail: SecretKeyRail) = runBlocking {
+    @MethodSource("evmTypes")
+    fun `evm rail round trips through erc681`(type: DestinationType) = runBlocking {
+        val rail = rail(type)
+        val address = depositFor(type)
+        val svc = service()
+        val added = svc.addPayment(PaymentBuilder().addDestination(address, type).setTtl(180).build())
+        val encrypted = added.payment.destinations.single().value
+        assertEquals(type, added.payment.destinations.single().type)
+        assertNotEquals(address, encrypted)
+
+        val match = svc.verify(transferUri(type, address, encrypted, added.secret))
+        assertEquals(VerifyStatus.Match, match.status)
+        assertEquals(listOf(type), match.matchedDestinations.map { it.type })
+        assertEquals(address, match.matchedDestinations.single().value)
+
+        val folded = svc.verify(transferUri(type, address.lowercase(), encrypted, added.secret))
+        assertEquals(VerifyStatus.Match, folded.status)
+
+        val tampered = svc.verify(transferUri(type, SWAPPED_EVM, encrypted, added.secret))
+        assertEquals(VerifyStatus.Tampered, tampered.status)
+
+        assertEquals(VerifyStatus.Unknown, svc.verify(address).status)
+        val noBranta = svc.verify(
+            "ethereum:${rail.contract}@${rail.chainId}/transfer?address=$address&uint256=1000000"
+        )
+        assertEquals(VerifyStatus.Unknown, noBranta.status)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("postOnlyRails")
+    fun `tron ton and solana still encrypt on addPayment`(type: DestinationType, address: String) = runBlocking {
+        val svc = service()
+        val added = svc.addPayment(PaymentBuilder().addDestination(address, type).setTtl(180).build())
+        assertEquals(type, added.payment.destinations.single().type)
+        assertNotEquals(address, added.payment.destinations.single().value)
+        // No verify URI exists for these rails, so a bare address stays unknown.
+        assertEquals(VerifyStatus.Unknown, svc.verify(address).status)
+    }
+
+    @Test
+    fun `an ethereum scan does not bind a polygon-only payment`() = runBlocking {
+        val address = depositFor(DestinationType.UsdtPolygon)
+        val svc = service()
+        val added = svc.addPayment(
+            PaymentBuilder().addDestination(address, DestinationType.UsdtPolygon).setTtl(180).build()
+        )
+        val encrypted = added.payment.destinations.single().value
+
+        val cross = svc.verify(transferUri(DestinationType.UsdtEthereum, address, encrypted, added.secret))
+        assertEquals(VerifyStatus.Unknown, cross.status)
+        val correct = svc.verify(transferUri(DestinationType.UsdtPolygon, address, encrypted, added.secret))
+        assertEquals(VerifyStatus.Match, correct.status)
+    }
+
+    @Test
+    fun `a dual-token payment binds only the scanned token`() = runBlocking {
+        val usdt = depositFor(DestinationType.UsdtEthereum)
+        val usdc = depositFor(DestinationType.UsdcEthereum)
         val svc = service()
         val added = svc.addPayment(
             PaymentBuilder()
-                .addDestination(rail.address, rail.type)
-                .setTtl(120)
+                .addDestination(usdt, DestinationType.UsdtEthereum)
+                .addDestination(usdc, DestinationType.UsdcEthereum)
+                .setTtl(180)
                 .build()
         )
-        val encrypted = added.payment.destinations.single().value
-        assertEquals(rail.type, added.payment.destinations.single().type)
+        val encryptedUsdt = added.payment.destinations.first { it.type == DestinationType.UsdtEthereum }.value
 
-        val match = svc.verify(secretKeyUri(rail.scheme, rail.address, encrypted, added.secret))
-        assertEquals(VerifyStatus.Match, match.status)
-        assertEquals(rail.type, match.matchedDestinations.single().type)
-        if (rail.caseFold) {
-            assertTrue(match.matchedDestinations.single().value.equals(rail.address, ignoreCase = true))
-            assertEquals(
-                VerifyStatus.Match,
-                svc.verify(secretKeyUri(rail.scheme, rail.address.lowercase(), encrypted, added.secret)).status
-            )
-        } else {
-            assertEquals(rail.address, match.matchedDestinations.single().value)
-        }
-        assertEquals(
-            VerifyStatus.Tampered,
-            svc.verify(secretKeyUri(rail.scheme, rail.swapped, encrypted, added.secret)).status
-        )
-        assertEquals(VerifyStatus.Unknown, svc.verify(rail.address).status)
+        val matchUsdt = svc.verify(transferUri(DestinationType.UsdtEthereum, usdt, encryptedUsdt, added.secret))
+        assertEquals(VerifyStatus.Match, matchUsdt.status)
+        assertEquals(listOf(DestinationType.UsdtEthereum), matchUsdt.matchedDestinations.map { it.type })
+        assertTrue(matchUsdt.payments.single().destinations.first { it.type == DestinationType.UsdcEthereum }.isEncrypted)
+
+        val swapped = svc.verify(transferUri(DestinationType.UsdtEthereum, SWAPPED_EVM, encryptedUsdt, added.secret))
+        assertEquals(VerifyStatus.Tampered, swapped.status)
     }
 
     companion object {
@@ -90,80 +161,19 @@ class MultiRailRoundTripTest {
             assumeTrue(!System.getenv("BRANTA_API_KEY").isNullOrEmpty(), "Live POST skipped unless BRANTA_API_KEY is set")
         }
 
+        private const val BITCOIN = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+        private const val BITCOIN_SWAPPED = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        private val SWAPPED_EVM = "0x" + "9".repeat(40)
+
         @JvmStatic
-        fun secretKeyRails(): Stream<SecretKeyRail> = Stream.of(
-            SecretKeyRail(
-                DestinationType.BitcoinAddress,
-                "bitcoin",
-                "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-                "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtPolygon,
-                "pol",
-                "0x278297528c32eCa01295B0d2135984d3442ec963",
-                "0x1111111111111111111111111111111111111111",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdcPolygon,
-                "pol",
-                "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-                "0x2222222222222222222222222222222222222222",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtEthereum,
-                "eth",
-                "0xBF5550253939187432Ef4dccE8089765d3DCb47f",
-                "0x3333333333333333333333333333333333333333",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdcEthereum,
-                "eth",
-                "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-                "0x4444444444444444444444444444444444444444",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtBsc,
-                "bsc",
-                "0x55d398326f99059fF775485246999027B3197955",
-                "0x5555555555555555555555555555555555555555",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdcBsc,
-                "bsc",
-                "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-                "0x6666666666666666666666666666666666666666",
-                caseFold = true
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtTron,
-                "tron",
-                "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
-                "TXyZ1111111111111111111111111111111"
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtTon,
-                "ton",
-                "EQDtFpEwcFAEcRe5mLVh2N6C0y-_tur3BYOM93pEZPw390by",
-                "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"
-            ),
-            SecretKeyRail(
-                DestinationType.UsdtSolana,
-                "sol",
-                "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-                "11111111111111111111111111111111"
-            ),
-            SecretKeyRail(
-                DestinationType.UsdcSolana,
-                "sol",
-                "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf",
-                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-            )
+        fun evmTypes(): Stream<DestinationType> = DestinationType.EvmTokenRails.map { it.type }.stream()
+
+        @JvmStatic
+        fun postOnlyRails(): Stream<Arguments> = Stream.of(
+            Arguments.of(DestinationType.UsdtTron, "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"),
+            Arguments.of(DestinationType.UsdtTon, "EQDtFpEwcFAEcRe5mLVh2N6C0y-_tur3BYOM93pEZPw390by"),
+            Arguments.of(DestinationType.UsdtSolana, "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),
+            Arguments.of(DestinationType.UsdcSolana, "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDofycyinf")
         )
     }
 }

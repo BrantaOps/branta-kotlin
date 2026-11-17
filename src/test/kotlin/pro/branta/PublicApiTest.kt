@@ -28,7 +28,9 @@ class PublicApiTest {
         assertEquals("usdc_solana", DestinationType.UsdcSolana.wire)
         assertEquals("usdt_ton", DestinationType.UsdtTon.wire)
         assertNull(DestinationType.fromWire("usdc_ton"))
-        assertEquals(14, DestinationType.entries.size)
+        assertEquals("usdt_base", DestinationType.UsdtBase.wire)
+        assertEquals("usdc_arbitrum", DestinationType.UsdcArbitrum.wire)
+        assertEquals(18, DestinationType.entries.size)
 
         assertEquals(VerifyStatus.Match, VerifyStatus.Match)
         assertEquals("https://staging.guardrail.branta.pro", BrantaEnvironment.Staging.url)
@@ -88,15 +90,14 @@ class PublicApiTest {
     @Test
     fun `family helpers are not public`() {
         val companion = DestinationType.Companion::class
-        val internalProps = listOf(
-            "PolygonEvm", "EthereumEvm", "BscEvm", "Tron", "Ton", "Solana", "SecretKeyUriFamilies"
-        )
-        for (name in internalProps) {
-            val prop = companion.declaredMemberProperties.first { it.name == name }
-            assertEquals(KVisibility.INTERNAL, prop.visibility, name)
+        val rails = companion.declaredMemberProperties.first { it.name == "EvmTokenRails" }
+        assertEquals(KVisibility.INTERNAL, rails.visibility)
+        for (name in listOf("isSecretKeyAddress", "evmTokenType")) {
+            val fn = companion.declaredFunctions.first { it.name == name }
+            assertEquals(KVisibility.INTERNAL, fn.visibility, name)
         }
-        val secretKey = companion.declaredFunctions.first { it.name == "isSecretKeyAddress" }
-        assertEquals(KVisibility.INTERNAL, secretKey.visibility)
+        val removed = listOf("PolygonEvm", "EthereumEvm", "BscEvm", "Tron", "Ton", "Solana", "SecretKeyUriFamilies")
+        assertTrue(companion.declaredMemberProperties.none { it.name in removed })
         assertTrue(companion.declaredFunctions.none { it.name == "isPolygonEvm" })
     }
 
