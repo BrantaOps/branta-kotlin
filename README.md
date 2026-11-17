@@ -9,9 +9,13 @@ Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and 
 
 ## Install
 
+[![Maven Central](https://img.shields.io/maven-central/v/pro.branta/branta)](https://central.sonatype.com/artifact/pro.branta/branta)
+
+Use the latest version from Maven Central.
+
 ```kotlin
 dependencies {
-    implementation("pro.branta:branta:4.4.0")
+    implementation("pro.branta:branta:<version>")
 }
 ```
 
