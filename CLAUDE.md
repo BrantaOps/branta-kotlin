@@ -32,6 +32,8 @@ BRANTA_RUN_INTEGRATION=1 BRANTA_API_KEY=… ./gradlew test --tests pro.branta.Mu
 
 Live write/lookup tests (`ExampleQrCodesTest`, `LiveStagingCombosTest`, `MultiRailRoundTripTest`) run only when `BRANTA_RUN_INTEGRATION=1` (and `BRANTA_API_KEY` for POST).
 
+Release: bump `version` in `build.gradle.kts`, add a `CHANGELOG.md` entry, run `./gradlew publishToMavenCentral --no-configuration-cache` (GPG signing and Maven Central credentials come from the maintainer's `~/.gradle/gradle.properties`, never the repo), click Publish in the Central Portal, then tag the release commit `vX.Y.Z` and push the tag. Do not publish until asked.
+
 ## Layout
 
 Public API lives in `pro.branta`, `pro.branta.enums`, `pro.branta.models`, and `pro.branta.exceptions`: `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyStatus`, `VerifyResult`, `AddPaymentResult`, payment models, and `BrantaPaymentException`.
