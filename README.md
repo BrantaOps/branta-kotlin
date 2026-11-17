@@ -1,6 +1,6 @@
 # Branta Kotlin SDK
 
-Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and `addPayment` on receive.
+Kotlin SDK for [Branta](https://developer.branta.pro). Use `verify` on send and `addPayment` on receive. Status handling and parent platforms are in the [developer docs](https://developer.branta.pro).
 
 ## Requirements
 
@@ -69,18 +69,6 @@ val result = service.addPayment(payment)
 ```
 
 Every destination is encrypted. `addPayment` encrypts a copy, so a failed post can be retried with the same `Payment`. Description is stored in encrypted metadata. `addPayment` accepts the types on [Destination types](https://developer.branta.pro/destination-types), and [Encryption](https://developer.branta.pro/setup/receive/encryption) says which key each uses. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
-
-Shared-key parent platforms tag the child on the builder:
-
-```kotlin
-PaymentBuilder()
-    .setDescription("Invoice #12345")
-    .addDestination("bc1q…", DestinationType.BitcoinAddress)
-    .setChildPlatform("ChildBrand", logoUrl = "https://example.com/logo.png")
-    .build()
-```
-
-`hmacSecret` is deprecated. Prefer a shared `apiKey` with `setChildPlatform`. A per-call `BrantaApiOptions(apiKey = "<child-api-key>")` still selects the child key.
 
 ## Publishing
 
