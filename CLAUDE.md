@@ -39,15 +39,3 @@ Release: bump `version` in `build.gradle.kts`, add a `CHANGELOG.md` entry, run `
 Public API lives in `pro.branta`, `pro.branta.enums`, `pro.branta.models`, and `pro.branta.exceptions`: `BrantaService`, `PaymentBuilder`, `BrantaApiOptions`, `BrantaEnvironment`, `DestinationType`, `VerifyStatus`, `VerifyResult`, `AddPaymentResult`, payment models, and `BrantaPaymentException`.
 
 Do **not** make public: `BrantaClient` / `HttpBrantaClient`, `QrParser`, `AesEncryption`, the EVM rail table (`EvmTokenRails`, `evmTokenType`), or `isSecretKeyAddress`. Prefer `internal` for those. `PublicApiTest` locks companion/helper visibility with kotlin-reflect.
-
-| File | Role |
-|------|------|
-| `BrantaService.kt` | Encrypt/decrypt orchestration around HTTP. |
-| `BrantaClient.kt` | Raw HTTP. Timeouts map transport failures to incomplete on GET. |
-| `enums/DestinationType.kt` | Destination types; verify statuses live under `enums/`; the EVM rail table is internal. |
-| `BrantaApiOptions.kt` | Options; `hmacSecret` deprecated. |
-| `Serialization.kt` | JSON encode/decode. |
-| `QrParser.kt` | QR / URI parsing (internal). |
-| `PaymentBuilder.kt` | Fluent `Payment` construction. |
-| `BrantaExtensions.kt` | Hash, URI encoding, HMAC, options resolvers. |
-| `AesEncryption.kt` | Crypto primitives (internal). |

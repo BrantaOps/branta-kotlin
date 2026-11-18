@@ -31,8 +31,7 @@ val result = service.verify(input)
 when (result.status) {
     VerifyStatus.Match -> {
         // Show the card for result.payments.first(). Link it to result.verifyUrl.
-        // For EVM stablecoins, token is on result.matchedDestinations[i].type
-        // (e.g. UsdcBase). Pay from that list.
+        // For EVM stablecoins, token is on result.matchedDestinations[i].type. Pay from that list.
     }
     VerifyStatus.Unknown -> {
         // Not in Branta — show nothing.
