@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `verify` no longer accepts `pol:`, `eth:`, `bsc:`, `tron:`, `ton:`, or `sol:`. These return `unknown` without a lookup. Switch EVM stablecoin QR codes to the ERC-681 form above.
 
 ### Notes
-- `addPayment` still encrypts `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana`. They have no verify URI. Matches `@branta-ops/branta` 4.4.0.
+- `addPayment` still encrypts `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana`. They have no verify URI.
 
 ## [4.3.0] - 2026-11-12
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-rail stablecoin destination types `UsdtEthereum`, `UsdcEthereum`, `UsdtBsc`, `UsdcBsc`, `UsdtTron`, `UsdtTon`, `UsdtSolana`, `UsdcSolana`. `addPayment` encrypts them with a random secret. `verify` parses `eth:`, `bsc:`, `tron:`, `ton:`, and `sol:` URIs with `branta_id` / `branta_secret`, match-if-any within the scheme's family. A bare address is `unknown`. Token is on `matchedDestinations[].type`, not the URI scheme.
 
 ### Changed
-- **Breaking for 4.2.0 callers:** family lists / `SecretKeyUriFamilies` / `isSecretKeyAddress` are `internal` (match JS/Python/Dart/Swift consumer surface).
+- **Breaking for 4.2.0 callers:** family lists / `SecretKeyUriFamilies` / `isSecretKeyAddress` are `internal`.
 - Malformed GET JSON / bad payment rows map to `incomplete` (not a thrown decode error). Non-array 200 bodies decode as an empty list.
 - Default OkHttp client uses a 30s call/connect/read/write timeout so hung networks become `incomplete` on verify.
 - `hmacSecret` on `BrantaApiOptions` / the matching `BrantaService` constructor is deprecated; prefer a shared `apiKey` with `PaymentBuilder.setChildPlatform`.
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking for 4.2.0 callers:** `DestinationType.isPolygonEvm` (superseded by `SecretKeyUriFamilies` / `isSecretKeyAddress`).
 
 ### Notes
-- `usdc_ton` is deferred until a platform names a concrete TON USDC jetton. Matches `@branta-ops/branta` / `branta` Python / Dart / Swift 4.3.0.
+- `usdc_ton` is deferred until a platform names a concrete TON USDC jetton.
 
 ## [4.2.0] - 2026-11-10
 
@@ -51,7 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `verify` of a `pol:` URI binds any Polygon EVM family member whose decrypted address matches (match-if-any).
 - `pol:` parsing does not stamp a token `DestinationType` on the QR address. The scheme maps to the Polygon EVM family for verify; the token still comes from the matched payment destination.
 - `verify` swap-checks only the secret-key rail family that matches the QR scheme, so a payment with both bitcoin and `usdt_polygon` no longer returns `tampered` for a valid single-rail QR.
-- This release matches `@branta-ops/branta` / Branta.NET / branta-go / branta-swift 4.2.0.
 
 ## [4.0.0] - 2026-11-02
 
