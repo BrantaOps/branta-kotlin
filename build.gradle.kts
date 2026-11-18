@@ -63,7 +63,7 @@ mavenPublishing {
 
     pom {
         name.set("Branta Kotlin SDK")
-        description.set("Kotlin SDK for the Branta V2 API — verify a payment destination or register one")
+        description.set("Kotlin SDK for Branta: verify a payment destination or register one.")
         url.set("https://branta.pro")
         licenses {
             license {
