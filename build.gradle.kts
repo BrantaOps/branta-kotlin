@@ -39,7 +39,6 @@ tasks.test {
     if (System.getenv("BRANTA_RUN_INTEGRATION") != "1") {
         filter {
             excludeTestsMatching("*.ExampleQrCodesTest")
-            excludeTestsMatching("*.PolygonRoundTripTest")
             excludeTestsMatching("*.LiveStagingCombosTest")
             excludeTestsMatching("*.MultiRailRoundTripTest")
         }
