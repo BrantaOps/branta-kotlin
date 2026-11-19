@@ -6,10 +6,13 @@ import pro.branta.enums.BrantaEnvironment
 data class BrantaApiOptions(
     val environment: BrantaEnvironment? = null,
     val apiKey: String? = null,
-    @property:Deprecated("Use a shared apiKey with PaymentBuilder.setChildPlatform instead.")
+    /**
+     * Secret from the Secrets tab in Guardrail. Signs `POST /v2/payments` with `X-HMAC-Signature` and
+     * `X-HMAC-Timestamp`. Needed when your platform has Require HMAC on. Server-side only.
+     * See https://developer.branta.pro/setup/receive/hmac-signing
+     */
     val hmacSecret: String? = null
 ) {
-    @Suppress("DEPRECATION")
     override fun toString(): String =
         "BrantaApiOptions(environment=$environment, apiKey=${redacted(apiKey)}, hmacSecret=${redacted(hmacSecret)})"
 }
