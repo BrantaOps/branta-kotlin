@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `hmacSecret` on `BrantaApiOptions` and the matching `BrantaService` constructor are no longer `@Deprecated`. Platforms with Require HMAC on need them to sign `addPayment`. Only the per-client parent-platform flow is deprecated; a shared `apiKey` with `setChildPlatform` replaces it.
+
+### Documentation
+- README documents HMAC signing and links the developer docs.
+
 ## [4.4.0] - 2026-11-17
 
 ### Added

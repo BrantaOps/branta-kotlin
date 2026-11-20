@@ -73,8 +73,6 @@ class BrantaService internal constructor(
         UuidSecretGenerator()
     )
 
-    @Deprecated("Use a shared apiKey with PaymentBuilder.setChildPlatform instead.")
-    @Suppress("DEPRECATION")
     constructor(
         environment: BrantaEnvironment,
         apiKey: String? = null,

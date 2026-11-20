@@ -67,3 +67,15 @@ val result = service.addPayment(payment)
 ```
 
 `addPayment` accepts the types on [Destination types](https://developer.branta.pro/destination-types). Pass the type for stablecoins. A bare address is not auto-detected. `UsdtTron`, `UsdtTon`, `UsdtSolana`, and `UsdcSolana` also encrypt and post, but no URI verifies them.
+
+### HMAC signing
+
+If Branta enabled Require HMAC on your platform, create a Secret in Guardrail and set it as `hmacSecret`. The service signs each `addPayment`. Keep it server-side. See [HMAC signing](https://developer.branta.pro/setup/receive/hmac-signing).
+
+```kotlin
+val service = BrantaService(
+    environment = BrantaEnvironment.Production,
+    apiKey = "<api-key>",
+    hmacSecret = "<secret>"
+)
+```

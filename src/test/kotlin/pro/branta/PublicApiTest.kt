@@ -55,7 +55,6 @@ class PublicApiTest {
     }
 
     @Test
-    @Suppress("DEPRECATION")
     fun `toString redacts api key, hmac secret, and payment secret`() {
         val options = BrantaApiOptions(
             environment = BrantaEnvironment.Staging,
