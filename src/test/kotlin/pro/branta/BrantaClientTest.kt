@@ -134,4 +134,42 @@ class BrantaClientTest {
         client.postPayment(Payment(destinations = mutableListOf(Destination(value = "cipher"))))
         assertTrue(!sawHmac)
     }
+
+    private fun capturingClient(captured: MutableList<okhttp3.Request>): HttpBrantaClient {
+        val httpClient = OkHttpClient.Builder().addInterceptor { chain ->
+            captured.add(chain.request())
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("""{"destinations":[{"value":"cipher","zk":true}]}""".toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        return HttpBrantaClient(
+            BrantaApiOptions(environment = BrantaEnvironment.Localhost, apiKey = "key", hmacSecret = "secret"),
+            httpClient
+        )
+    }
+
+    @Test
+    fun `post carries the X-Branta-SDK header and get requests do not`() = runTest {
+        val captured = mutableListOf<okhttp3.Request>()
+        val client = capturingClient(captured)
+        client.postPayment(Payment(destinations = mutableListOf(Destination(value = "cipher"))))
+        client.getPayments("value")
+        client.isApiKeyValid()
+
+        assertEquals("kotlin/$SDK_VERSION", captured[0].header("X-Branta-SDK"))
+        assertEquals(null, captured[1].header("X-Branta-SDK"))
+        assertEquals(null, captured[2].header("X-Branta-SDK"))
+    }
+
+    @Test
+    fun `SDK_VERSION matches build gradle`() {
+        val gradle = java.io.File("build.gradle.kts").readText()
+        val declared = Regex("""(?m)^version\s*=\s*"([^"]+)"""").find(gradle)!!.groupValues[1]
+        assertEquals(declared, SDK_VERSION)
+        assertTrue(Regex("""\d+\.\d+\.\d+""").matches(SDK_VERSION))
+    }
 }

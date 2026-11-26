@@ -16,6 +16,27 @@ kotlin {
     jvmToolchain(11)
 }
 
+// Generates an internal constant from `version` so the X-Branta-SDK header cannot drift from this file.
+val generateSdkVersion by tasks.registering {
+    val sdkVersion = project.version.toString()
+    val outputDir = layout.buildDirectory.dir("generated/sdkVersion")
+    inputs.property("version", sdkVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().asFile.resolve("pro/branta/SdkVersion.kt")
+        file.parentFile.mkdirs()
+        file.writeText(
+            "package pro.branta\n\n" +
+                "// Generated from build.gradle.kts. Do not edit.\n" +
+                "internal const val SDK_VERSION: String = \"$sdkVersion\"\n"
+        )
+    }
+}
+
+kotlin.sourceSets.named("main") {
+    kotlin.srcDir(generateSdkVersion)
+}
+
 repositories {
     mavenCentral()
 }
