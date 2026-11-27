@@ -78,6 +78,7 @@ internal class HttpBrantaClient(
             .url("$baseUrl/v2/payments")
             .post(body.toRequestBody("application/json".toMediaType()))
             .header("Authorization", "Bearer ${requireApiKey(options)}")
+            .header("X-Branta-SDK", "kotlin/$SDK_VERSION")
         applyHmacHeaders(requestBuilder, baseUrl, body, options)
 
         val response = httpClient.newCall(requestBuilder.build()).await()
