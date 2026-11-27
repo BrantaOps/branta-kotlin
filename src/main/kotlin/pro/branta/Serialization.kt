@@ -19,6 +19,7 @@ import pro.branta.enums.DestinationType
 import pro.branta.models.Destination
 import pro.branta.models.Payment
 import pro.branta.models.Platform
+import pro.branta.models.effectiveBrand
 
 private val json = Json { explicitNulls = false }
 
@@ -42,7 +43,7 @@ private fun paymentToElement(payment: Payment): JsonObject = buildJsonObject {
     payment.platform?.let { put("platform", it) }
     payment.platformLogoUrl?.let { put("platform_logo_url", it) }
     payment.platformLogoLightUrl?.let { put("platform_logo_light_url", it) }
-    payment.childPlatform?.let { put("child_platform", platformToElement(it)) }
+    payment.effectiveBrand()?.let { put("brand", platformToElement(it)) }
 }
 
 private fun destinationToElement(destination: Destination): JsonObject = buildJsonObject {
@@ -65,6 +66,9 @@ private fun paymentFromElement(element: JsonElement): Payment {
     val destinations = obj["destinations"]?.takeUnless { it is JsonNull }?.jsonArray
         ?.map { destinationFromElement(it) }?.toMutableList()
         ?: mutableListOf()
+    // `brand` wins over the deprecated `child_platform` alias. The same value is mirrored into the old property.
+    val brand = (obj["brand"]?.takeUnless { it is JsonNull } ?: obj["child_platform"]?.takeUnless { it is JsonNull })
+        ?.let { platformFromElement(it) }
     return Payment(
         destinations = destinations,
         createdAt = obj.string("created_at"),
@@ -74,7 +78,8 @@ private fun paymentFromElement(element: JsonElement): Payment {
         platformLogoUrl = obj.string("platform_logo_url"),
         platformLogoLightUrl = obj.string("platform_logo_light_url"),
         parentPlatform = obj["parent_platform"]?.takeUnless { it is JsonNull }?.let { platformFromElement(it) },
-        childPlatform = obj["child_platform"]?.takeUnless { it is JsonNull }?.let { platformFromElement(it) }
+        childPlatform = brand?.copy(),
+        brand = brand
     )
 }
 

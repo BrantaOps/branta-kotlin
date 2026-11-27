@@ -20,7 +20,8 @@ Invariants that break silently. Check them before you change `verify` or `addPay
 
 - A logo-domain mismatch throws `BrantaPaymentException`.
 - `DestinationType` is only what `addPayment` accepts. It also includes `usdt_tron`, `usdt_ton`, `usdt_solana`, and `usdc_solana`. They can be posted but no URI verifies them, and they are not on the public Destination types page. There is no `usdc_ton`.
-- `hmacSecret` signs `POST /v2/payments` for platforms with Require HMAC on. It is not deprecated. For parent platforms, a shared `apiKey` plus `setChildPlatform` replaces the deprecated per-client HMAC flow.
+- `hmacSecret` signs `POST /v2/payments` for platforms with Require HMAC on. It is not deprecated. For parent platforms, a shared `apiKey` plus `setBrand` replaces the deprecated per-client HMAC flow.
+- `setBrand(name, logoUrl, logoLightUrl)` is the method and `brand` is the wire field. `setChildPlatform` and `Payment.childPlatform` stay only as `@Deprecated` (warning level) aliases; `setChildPlatform` delegates to `setBrand`. Never send `child_platform`. Internal code reads the effective brand through `Payment.effectiveBrand()` (`brand`, else `childPlatform`), and parsing accepts `brand` or `child_platform` (brand wins) and mirrors it into both properties.
 - The default OkHttp client uses a 30s call/connect/read/write timeout. CI gates Sources line coverage at ≥80% via Kover.
 
 ## Commands

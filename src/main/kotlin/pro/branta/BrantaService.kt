@@ -9,6 +9,7 @@ import pro.branta.exceptions.IncompleteException
 import pro.branta.models.AddPaymentResult
 import pro.branta.models.Destination
 import pro.branta.models.Payment
+import pro.branta.models.effectiveBrand
 import pro.branta.models.VerifyResult
 import java.util.UUID
 
@@ -26,11 +27,17 @@ private fun toVerifyResult(payments: List<Payment>, verifyUrl: String): VerifyRe
         matchedDestinations = matchedDestinationsFrom(payments)
     )
 
-private fun copyPayment(payment: Payment): Payment = payment.copy(
-    destinations = payment.destinations.map { it.copy() }.toMutableList(),
-    parentPlatform = payment.parentPlatform?.copy(),
-    childPlatform = payment.childPlatform?.copy()
-)
+// The copy carries the effective brand in both `brand` and the deprecated mirror, so an old-style
+// `childPlatform` is normalized without touching the caller's Payment.
+private fun copyPayment(payment: Payment): Payment {
+    val brand = payment.effectiveBrand()?.copy()
+    return payment.copy(
+        destinations = payment.destinations.map { it.copy() }.toMutableList(),
+        parentPlatform = payment.parentPlatform?.copy(),
+        childPlatform = brand?.copy(),
+        brand = brand
+    )
+}
 
 private val bech32Regex = Regex("^(bc|tb|bcrt)1", RegexOption.IGNORE_CASE)
 

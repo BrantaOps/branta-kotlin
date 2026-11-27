@@ -11,6 +11,7 @@ import okhttp3.Response
 import pro.branta.exceptions.BrantaPaymentException
 import pro.branta.exceptions.IncompleteException
 import pro.branta.models.Payment
+import pro.branta.models.effectiveBrand
 import java.io.IOException
 import java.net.URI
 import javax.crypto.Mac
@@ -135,8 +136,9 @@ internal class HttpBrantaClient(
             check(payment.platformLogoLightUrl, "platformLogoLightUrl")
             check(payment.parentPlatform?.logoUrl, "parentPlatform.logoUrl")
             check(payment.parentPlatform?.logoLightUrl, "parentPlatform.logoLightUrl")
-            check(payment.childPlatform?.logoUrl, "childPlatform.logoUrl")
-            check(payment.childPlatform?.logoLightUrl, "childPlatform.logoLightUrl")
+            val brand = payment.effectiveBrand()
+            check(brand?.logoUrl, "brand.logoUrl")
+            check(brand?.logoLightUrl, "brand.logoLightUrl")
         }
     }
 

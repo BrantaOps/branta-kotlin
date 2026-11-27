@@ -38,10 +38,15 @@ class PaymentBuilder {
         return this
     }
 
-    fun setChildPlatform(name: String, logoUrl: String? = null, logoLightUrl: String? = null): PaymentBuilder {
-        payment.childPlatform = Platform(name = name, logoUrl = logoUrl, logoLightUrl = logoLightUrl)
+    fun setBrand(name: String, logoUrl: String? = null, logoLightUrl: String? = null): PaymentBuilder {
+        payment.brand = Platform(name = name, logoUrl = logoUrl, logoLightUrl = logoLightUrl)
         return this
     }
+
+    /** Deprecated old name for [setBrand]. */
+    @Deprecated("Use setBrand", ReplaceWith("setBrand(name, logoUrl, logoLightUrl)"))
+    fun setChildPlatform(name: String, logoUrl: String? = null, logoLightUrl: String? = null): PaymentBuilder =
+        setBrand(name, logoUrl, logoLightUrl)
 
     fun build(): Payment = payment
 }
