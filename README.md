@@ -79,7 +79,7 @@ val payment = PaymentBuilder()
     .build()
 ```
 
-`setChildPlatform` and `Payment.childPlatform` are the deprecated old names. They still work and delegate to `setBrand` / `brand`, but the SDK now sends `brand` on the wire, which needs a Branta server that accepts it.
+`setChildPlatform` and `Payment.childPlatform` are the deprecated old names. They still work and delegate to `setBrand` / `brand`, and the SDK now sends `brand` on the wire.
 
 ### HMAC signing
 
