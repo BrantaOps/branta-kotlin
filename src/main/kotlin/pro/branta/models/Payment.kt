@@ -11,7 +11,15 @@ data class Payment(
     var platformLogoUrl: String? = null,
     var platformLogoLightUrl: String? = null,
     var parentPlatform: Platform? = null,
+    /** Deprecated old name for [brand]. Still read when [brand] is not set. */
+    @property:Deprecated("Use brand", ReplaceWith("brand"))
     var childPlatform: Platform? = null,
     /** Runtime-only flag set after metadata decryption. */
-    var isMetadataDecrypted: Boolean = false
+    var isMetadataDecrypted: Boolean = false,
+    /** The payee a shared-key platform tags the payment with: a name plus optional logo source URLs. */
+    var brand: Platform? = null
 )
+
+/** `brand` if set, otherwise the deprecated `childPlatform`. The one place that reads the old name. */
+@Suppress("DEPRECATION")
+internal fun Payment.effectiveBrand(): Platform? = brand ?: childPlatform

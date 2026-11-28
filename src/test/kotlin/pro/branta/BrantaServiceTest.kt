@@ -298,7 +298,7 @@ class BrantaServiceTest {
         val payment = PaymentBuilder()
             .setDescription("Invoice")
             .addDestination(address, DestinationType.BitcoinAddress)
-            .setChildPlatform("Child")
+            .setBrand("Child")
             .build()
         val result = service(client, FixedSecret("dek", secret)).addPayment(payment)
         assertEquals(address, payment.destinations.single().value)
@@ -306,11 +306,12 @@ class BrantaServiceTest {
         val posted = client.posted!!
         assertEquals(secret, result.secret)
         assertTrue(posted.metadata != payment.metadata)
-        assertEquals("Child", posted.childPlatform?.name)
+        assertEquals("Child", posted.brand?.name)
         assertNull(posted.description)
         val wire = paymentToJson(posted)
         assertTrue(wire.contains("\"zk\":true"))
-        assertTrue(wire.contains("child_platform"))
+        assertTrue(wire.contains("\"brand\""))
+        assertFalse(wire.contains("child_platform"))
         assertFalse(wire.contains("\"description\""))
     }
 
@@ -329,6 +330,8 @@ class BrantaServiceTest {
         )
         assertNull(payment.ttl)
         assertNull(payment.parentPlatform)
+        assertNull(payment.brand)
+        @Suppress("DEPRECATION")
         assertNull(payment.childPlatform)
     }
 

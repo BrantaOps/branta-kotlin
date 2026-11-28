@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `PaymentBuilder.setBrand(name, logoUrl, logoLightUrl)` and `Payment.brand`. A brand is the payee a shared-key platform tags a payment with: a name plus optional logo source URLs.
+
+### Deprecated
+- `PaymentBuilder.setChildPlatform` and `Payment.childPlatform` are deprecated in favor of `setBrand` and `brand`. They still work: `setChildPlatform` delegates to `setBrand`, and a Payment with only `childPlatform` set is sent as `brand`. Responses with either `brand` or `child_platform` populate both properties; `brand` wins when both are present.
+
 ### Changed
+- `POST /v2/payments` now sends `brand` (`name`, `logo_url`, `logo_light_url`) and never `child_platform`.
+- Logo-domain mismatch errors for the brand report `brand.logoUrl` / `brand.logoLightUrl` instead of `childPlatform.*`.
 - `POST /v2/payments` now sends an `X-Branta-SDK` header (language and SDK version). GETs are unchanged.
 - `hmacSecret` on `BrantaApiOptions` and the matching `BrantaService` constructor are no longer `@Deprecated`. Platforms with Require HMAC on need them to sign `addPayment`. Only the per-client parent-platform flow is deprecated; a shared `apiKey` with `setChildPlatform` replaces it.
 

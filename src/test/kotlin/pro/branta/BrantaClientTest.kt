@@ -58,6 +58,18 @@ class BrantaClientTest {
     }
 
     @Test
+    fun `checks brand logo fields from brand and from the child_platform alias`() = runTest {
+        for (key in listOf("brand", "child_platform")) {
+            val json = """[{"destinations": $destinations, "$key": {"name": "B", "logo_url": "$otherOrigin/b.png"}}]"""
+            val ex = assertFailsWith<BrantaPaymentException> { clientWithResponse(json).getPayments("value") }
+            assertTrue(ex.message!!.contains("brand.logoUrl"), key)
+            val light = """[{"destinations": $destinations, "$key": {"logo_light_url": "$otherOrigin/b.png"}}]"""
+            val exLight = assertFailsWith<BrantaPaymentException> { clientWithResponse(light).getPayments("value") }
+            assertTrue(exLight.message!!.contains("brand.logoLightUrl"), key)
+        }
+    }
+
+    @Test
     fun `404 returns an empty list and 429 is incomplete`() = runTest {
         assertTrue(clientWithResponse("", 404).getPayments("value").isEmpty())
         assertFailsWith<IncompleteException> { clientWithResponse("", 429).getPayments("value") }

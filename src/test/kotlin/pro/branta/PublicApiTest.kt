@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import pro.branta.models.AddPaymentResult
 import pro.branta.models.Payment
+import pro.branta.models.Platform
 import org.junit.jupiter.api.Test
 import pro.branta.enums.BrantaEnvironment
 import pro.branta.enums.DestinationType
@@ -15,6 +16,7 @@ import pro.branta.exceptions.BrantaPaymentException
 import pro.branta.models.VerifyResult
 import kotlin.reflect.KVisibility
 import kotlin.reflect.full.declaredFunctions
+import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.declaredMemberProperties
 
 /**
@@ -52,6 +54,28 @@ class PublicApiTest {
 
         val error = BrantaPaymentException("platformLogoUrl domain does not match the configured API domain")
         assertTrue(error.message!!.contains("platformLogoUrl"))
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `brand is public and the child platform names are deprecated aliases`() {
+        val payment = PaymentBuilder().setBrand("Acme", "https://l/a.png", "https://l/b.png").build()
+        assertEquals(Platform("Acme", "https://l/a.png", "https://l/b.png"), payment.brand)
+        assertNull(PaymentBuilder().setBrand("Acme").build().brand?.logoUrl)
+
+        val setter = PaymentBuilder::class.declaredFunctions.first { it.name == "setChildPlatform" }
+        assertEquals(KVisibility.PUBLIC, setter.visibility)
+        val deprecated = setter.findAnnotation<Deprecated>()!!
+        assertEquals(DeprecationLevel.WARNING, deprecated.level)
+        assertEquals("Use setBrand", deprecated.message)
+
+        val property = Payment::class.declaredMemberProperties.first { it.name == "childPlatform" }
+        val propertyDeprecated = property.findAnnotation<Deprecated>()!!
+        assertEquals(DeprecationLevel.WARNING, propertyDeprecated.level)
+        assertEquals("Use brand", propertyDeprecated.message)
+        assertEquals(KVisibility.PUBLIC, Payment::class.declaredMemberProperties.first { it.name == "brand" }.visibility)
+        assertNull(Payment::class.declaredMemberProperties.first { it.name == "brand" }.findAnnotation<Deprecated>())
+        assertNull(PaymentBuilder::class.declaredFunctions.first { it.name == "setBrand" }.findAnnotation<Deprecated>())
     }
 
     @Test
